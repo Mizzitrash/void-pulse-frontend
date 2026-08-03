@@ -1,0 +1,86 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // --- Fonctions utilitaires ---
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Gère le cas où "roles" est une string unique OU un tableau.
+    function getRoles() {
+      let roles = get(/databases/$(database)/documents/users/$(request.auth.uid)).data.roles;
+      return roles is list ? roles : [roles];
+    }
+
+    function isAdminOrFounder() {
+      return isSignedIn() &&
+        (('ADMIN' in getRoles()) || ('FONDATEUR' in getRoles()) || ('FOUNDER' in getRoles()));
+    }
+
+    function isArtistRole() {
+      return isSignedIn() &&
+        (('ARTIST' in getRoles()) || ('ARTISTE' in getRoles()));
+    }
+
+    // Vrai si le profil de l'utilisateur connecté est rattaché à cette
+    // page artiste précise (par artistId, ou par ID direct en fallback).
+    function ownsArtistPage(artistId) {
+      let profile = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      return (
+        ('artistId' in profile && profile.artistId == artistId) ||
+        request.auth.uid == artistId
+      );
+    }
+
+    function canEditArtist(artistId) {
+      return isSignedIn() && (
+        isAdminOrFounder() ||
+        (isArtistRole() && ownsArtistPage(artistId))
+      );
+    }
+
+    // --- Collection users (profils) ---
+
+    match /users/{userId} {
+      allow read: if isSignedIn();
+
+      allow create: if isSignedIn() && request.auth.uid == userId;
+
+      // Un utilisateur peut modifier son propre profil, MAIS SANS toucher
+      // à roles ni artistId — seuls les champs "sûrs" sont modifiables.
+      allow update: if isSignedIn() && request.auth.uid == userId
+        && request.resource.data.roles == resource.data.roles
+        && request.resource.data.artistId == resource.data.artistId;
+
+      // Un admin/fondateur peut tout modifier, y compris roles et artistId.
+      allow update: if isAdminOrFounder();
+    }
+
+    // --- Collection artists ---
+
+    match /artists/{artistId} {
+      // Les pages artistes sont publiques en lecture.
+      allow read: if true;
+
+      // Création : réservée aux admins/fondateurs.
+      allow create: if isAdminOrFounder();
+
+      // Modification : admin/fondateur, ou artiste sur SA PROPRE page.
+      allow update: if canEditArtist(artistId);
+
+      // Suppression : réservée aux admins/fondateurs.
+      allow delete: if isAdminOrFounder();
+    }
+
+    // --- Ajoute ici tes autres collections (beats, actus, etc.) ---
+    // match /beats/{beatId} {
+    //   allow read: if true;
+    //   allow write: if isAdminOrFounder();
+    // }
+
+    // Tout le reste est refusé par défaut.
+  }
+}
