@@ -8,7 +8,7 @@ export const ARTISTS_DATA: Artist[] = [
   {
     id: '1',
     name: 'NSK',
-    genre: 'NEW WAVE / TRAP',
+    genre: 'DRILL/TRAP',
     image: '/pdp-nsk.jpg',
     bio: 'Artiste du label VØID PULSE, NSK découpe chaque prod avec une précision chirurgicale. Son énergie brute et ses flows acérés redéfinissent les codes de la scène actuelle.',
     audio: '/nsk.mp3',
@@ -43,7 +43,7 @@ export const ARTISTS_DATA: Artist[] = [
   {
     id: '4',
     name: 'KAYES',
-    genre: 'DIGICORE / EXPERIMENTAL',
+    genre: 'EXPERIMENTAL',
     image: '/pdp-kayes.jpg',
     bio: 'Artiste du label VØID PULSE, KAYES fusionne les textures de la musique POP, HIP HOP et RNB avec la puissance de la trap moderne pour créer une ambiance qui touche le cœur. Une vision étendue, émotionnelle et sans concession.',
     audio: '/ALONE.mp3',
@@ -54,7 +54,7 @@ export const ARTISTS_DATA: Artist[] = [
   {
     id: '5',
     name: 'GNK',
-    genre: 'UNDERGROUND TRAP',
+    genre: 'TRAP',
     image: '/pdp-gnk.jpg',
     bio: 'Artiste du label VØID PULSE, GNK impose un style hybride et percutant. Entre flows techniques et ambiances sombres, il découpe chaque production avec une efficacité redoutable.',
     audio: '/gnk.mp3',
@@ -63,16 +63,16 @@ export const ARTISTS_DATA: Artist[] = [
   {
     id: '6',
     name: 'DYSKO',
-    genre: 'LBL / HEAVY BASS',
+    genre: 'TRAP',
     image: '/pdp-dysko.jpg',
-    bio: 'Artiste incontournable du label VØID PULSE, LBL livre une performance brute à chaque apparition. Sa maîtrise du flow et son énergie incisive transforment chaque morceau en une démonstration de puissance.',
-    audio: '/lbl.mp3',
-    videoBg: '/lbl-protoclip.mp4',
+    bio: 'Artiste incontournable du label VØID PULSE, DYSKO livre une performance brute à chaque apparition. Sa maîtrise du flow et son énergie incisive transforment chaque morceau en une démonstration de puissance.',
+    audio: '/dysko.mp3',
+    videoBg: '/dysko-protoclip.mp4',
   },
   {
     id: '7',
     name: '88',
-    genre: 'NIGHT BEATS / DRILL',
+    genre: 'DRILL',
     image: '/pdp-88.jpg',
     bio: "ARTISTE du label VØID PULSE, 88, artiste qui rppose un style de musique polyvalent. Il peut composer avec n'importe quelle instrumentale et apporte une touches de rimes spécifiques à son art.",
     audio: '/88.mp3',
