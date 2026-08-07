@@ -27,6 +27,3 @@ dist-ssr
 .env
 .env.local
 .env.*.local
-
-git add .
-git commit -m "Premier commit"
