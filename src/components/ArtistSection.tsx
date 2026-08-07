@@ -48,14 +48,14 @@ export const ArtistSection: React.FC = () => {
           {/* IMAGE (CLIQUABLE) */}
           <div 
             onClick={goToArtistPage}
-            className="lg:col-span-7 relative aspect-square md:aspect-[16/9] lg:aspect-square overflow-hidden rounded-xl border border-white/10 group cursor-pointer"
+            className="lg:col-span-7 relative aspect-square md:aspect-video lg:aspect-square overflow-hidden rounded-xl border border-white/10 group cursor-pointer"
           >
             <img 
               src={activeArtist.image} 
               alt={activeArtist.name} 
               className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105 filter grayscale contrast-125 group-hover:grayscale-0"
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent opacity-80" />
+            <div className="absolute inset-0 bg-linear-to-t from-black via-transparent to-transparent opacity-80" />
             
             <div className="absolute bottom-6 left-6 right-6 flex justify-between items-end">
               <span className="text-xs font-mono tracking-widest text-void-accent bg-black/80 px-3 py-1 rounded border border-void-accent/30">
