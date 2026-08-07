@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../context/AuthContext';
+import { useDocumentMeta } from '../hooks/useDocumentMeta';
 import { ARTISTS_DATA } from '../data/artists';
 import type { Artist } from '../types/artist';
 import {
@@ -125,6 +126,16 @@ export const ArtistDetailPage: React.FC = () => {
       cancelled = true;
     };
   }, [id]);
+
+  // Appelé AVANT les retours anticipés ci-dessous : un hook ne peut pas
+  // être placé après un `return` conditionnel.
+  useDocumentMeta({
+    title: artistData?.name,
+    description: artistData?.bio
+      ? artistData.bio.slice(0, 155)
+      : undefined,
+    image: artistData?.image,
+  });
 
   if (isLoading) {
     return (

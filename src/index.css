@@ -1,23 +1,123 @@
 @import "tailwindcss";
 
+/* ---------------------------------------------------------------------
+   THÈME
+   En Tailwind v4, tailwind.config.js n'est plus chargé automatiquement :
+   le thème se déclare ici, en CSS. Les couleurs `void-*` et les polices
+   définies dans l'ancien fichier de config n'étaient donc jamais
+   appliquées — les classes text-void-accent, border-void-border,
+   bg-void-card ne correspondaient à rien.
+   --------------------------------------------------------------------- */
+@theme {
+  --color-void-bg: #000000;
+  --color-void-card: #080808;
+  --color-void-border: rgba(255, 255, 255, 0.05);
+  --color-void-accent: #a00303;
+  --color-void-text-muted: #888888;
+
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+}
+
 @layer base {
+  html {
+    scroll-behavior: smooth;
+    /* Compense la navbar fixe (h-20) quand on cible une ancre. */
+    scroll-padding-top: 6rem;
+  }
+
   body {
-    background-color: #000000;
+    background-color: var(--color-void-bg);
     color: #ffffff;
-    font-family: 'Inter', sans-serif;
-    cursor: crosshair;
-    overflow-x: hidden;
+    font-family: var(--font-sans);
+    /* `overflow-x: hidden` retiré : il masquait les débordements au lieu
+       de les corriger, et casse `position: sticky` dans certains cas.
+       `overflow-x: clip` produit le même confort sans cet effet de bord. */
+    overflow-x: clip;
+  }
+
+  /* Le curseur crosshair est une signature de marque — on le garde, mais
+     seulement sur les pointeurs fins (souris). Sur écran tactile il n'a
+     aucun sens, et il empêchait le curseur texte d'apparaître. */
+  @media (pointer: fine) {
+    body {
+      cursor: crosshair;
+    }
+    input,
+    textarea,
+    select,
+    [contenteditable] {
+      cursor: text;
+    }
+    button,
+    a,
+    [role="button"],
+    summary {
+      cursor: pointer;
+    }
+  }
+
+  /* `user-select: none` global retiré : il empêchait de sélectionner ou
+     copier le moindre texte du site (nom d'artiste, prix, email...).
+     On le réserve aux éléments purement décoratifs ou interactifs. */
+  button,
+  [role="button"],
+  nav {
+    -webkit-user-select: none;
     user-select: none;
+  }
+
+  /* Focus clavier visible et cohérent partout (WCAG 2.4.7). */
+  :focus-visible {
+    outline: 2px solid var(--color-void-accent);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  /* Les images ne débordent jamais de leur conteneur. */
+  img,
+  video,
+  iframe {
+    max-width: 100%;
   }
 }
 
-/* Effet de grain signature VØID */
+/* ---------------------------------------------------------------------
+   GRAIN SIGNATURE VØID
+   L'ancienne version chargeait une image depuis grainy-gradients.vercel.app,
+   un domaine tiers qui renvoie aujourd'hui une 404 : l'effet était donc
+   simplement absent en production. Le bruit est maintenant généré en SVG
+   inline (feTurbulence) — zéro requête réseau, zéro dépendance externe,
+   et impossible à casser par un service tiers.
+   --------------------------------------------------------------------- */
 body::before {
   content: "";
   position: fixed;
-  top: 0; left: 0; width: 100%; height: 100%;
-  background: url('https://grainy-gradients.vercel.app/noise.svg');
-  opacity: 0.04;
+  inset: 0;
   pointer-events: none;
   z-index: 999;
+  opacity: 0.04;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* ---------------------------------------------------------------------
+   ACCESSIBILITÉ — MOUVEMENT RÉDUIT
+   Respecte le réglage système "réduire les animations", utilisé notamment
+   par les personnes sujettes au mal des transports ou aux migraines
+   vestibulaires (WCAG 2.3.3). Sans ce bloc, l'IntroScreen, les spinners
+   et les animate-pulse s'imposaient à tout le monde.
+   --------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
