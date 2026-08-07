@@ -1,17 +1,8 @@
-export interface Artist {
-  id: string;
-  name: string;
-  genre: string;
-  image: string;
-  bio: string;
-  audio?: string;
-  videoBg?: string;
-  youtubeClip?: string;
-  spotifyUrl?: string;
-  youtubeUrl?: string;
-  instagramUrl?: string;
-  tiktokUrl?: string;
-}
+// Avant : ce fichier définissait son propre type `Artist`, distinct de
+// `ArtistProfile`/`Artist` dans types/artist.ts — deux définitions
+// différentes sous le même nom selon le fichier qui importait. On importe
+// maintenant le type canonique unique depuis types/artist.ts.
+import type { Artist } from '../types/artist';
 
 export const ARTISTS_DATA: Artist[] = [
   {

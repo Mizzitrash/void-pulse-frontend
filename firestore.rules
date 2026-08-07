@@ -42,18 +42,38 @@ service cloud.firestore {
       );
     }
 
+    function isCommunityManager() {
+      return isSignedIn() && ('COMMUNITY_MANAGER' in getRoles());
+    }
+
+    function isRealisateur() {
+      return isSignedIn() && ('REALISATEUR' in getRoles());
+    }
+
     // --- Collection users (profils) ---
 
     match /users/{userId} {
-      allow read: if isSignedIn();
+      // Avant : `allow read: if isSignedIn()` — n'importe quel membre
+      // inscrit pouvait lire TOUTE la collection users (emails, rôles,
+      // artistId de tout le monde). On restreint à son propre profil,
+      // plus les rôles élevés qui en ont un besoin fonctionnel.
+      allow read: if isSignedIn() && (
+        request.auth.uid == userId ||
+        isAdminOrFounder() ||
+        isCommunityManager()
+      );
 
       allow create: if isSignedIn() && request.auth.uid == userId;
 
       // Un utilisateur peut modifier son propre profil, MAIS SANS toucher
-      // à roles ni artistId — seuls les champs "sûrs" sont modifiables.
+      // à roles ni artistId. On utilise .get(champ, défaut) plutôt que
+      // .champ directement : accéder à une clé absente d'une map (ex:
+      // artistId pour un utilisateur sans page liée) fait planter
+      // l'évaluation de la règle entière, ce qui refusait à tort TOUTE
+      // modification de profil (avatar inclus) pour ces utilisateurs.
       allow update: if isSignedIn() && request.auth.uid == userId
-        && request.resource.data.roles == resource.data.roles
-        && request.resource.data.artistId == resource.data.artistId;
+        && request.resource.data.get('roles', null) == resource.data.get('roles', null)
+        && request.resource.data.get('artistId', null) == resource.data.get('artistId', null);
 
       // Un admin/fondateur peut tout modifier, y compris roles et artistId.
       allow update: if isAdminOrFounder();
@@ -62,24 +82,52 @@ service cloud.firestore {
     // --- Collection artists ---
 
     match /artists/{artistId} {
-      // Les pages artistes sont publiques en lecture.
       allow read: if true;
-
-      // Création : réservée aux admins/fondateurs.
       allow create: if isAdminOrFounder();
-
-      // Modification : admin/fondateur, ou artiste sur SA PROPRE page.
       allow update: if canEditArtist(artistId);
-
-      // Suppression : réservée aux admins/fondateurs.
       allow delete: if isAdminOrFounder();
     }
 
-    // --- Ajoute ici tes autres collections (beats, actus, etc.) ---
-    // match /beats/{beatId} {
-    //   allow read: if true;
-    //   allow write: if isAdminOrFounder();
-    // }
+    // --- Collection posts (Actu) ---
+
+    match /posts/{postId} {
+      allow read: if true;
+
+      allow create: if isCommunityManager() || isAdminOrFounder();
+
+      // Les réactions restent ouvertes à tout connecté, mais SEULEMENT
+      // sur le champ "reactions" — pas de réécriture du texte/image
+      // d'un post par un simple visiteur.
+      allow update: if isSignedIn() && (
+        (isCommunityManager() || isAdminOrFounder()) ||
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions']))
+      );
+
+      allow delete: if isCommunityManager() || isAdminOrFounder();
+    }
+
+    // --- Collection orders (commandes de beats) ---
+
+    match /orders/{orderId} {
+      // Un client ne voit que ses propres commandes ; un admin voit tout.
+      allow read: if isSignedIn() &&
+        (resource.data.uid == request.auth.uid || isAdminOrFounder());
+
+      allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid;
+
+      // Une commande est un historique immuable une fois créée.
+      allow update: if isAdminOrFounder();
+      allow delete: if isAdminOrFounder();
+    }
+
+    // --- Collection discovery_items (page Découverte) ---
+
+    match /discovery_items/{itemId} {
+      allow read: if true;
+      allow create: if isRealisateur() || isAdminOrFounder();
+      allow update: if isRealisateur() || isAdminOrFounder();
+      allow delete: if isRealisateur() || isAdminOrFounder();
+    }
 
     // Tout le reste est refusé par défaut.
   }

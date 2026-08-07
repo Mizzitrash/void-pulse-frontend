@@ -1,0 +1,48 @@
+rules_version = '2';
+
+// Règles Firebase Storage — jusqu'ici absentes de ton projet, donc soumises
+// au comportement par défaut (souvent tout ouvert ou tout fermé selon la
+// config initiale du bucket). On sécurise ici les deux usages identifiés
+// dans le code : les images de posts (CreatePost.tsx / PostCard.tsx) et,
+// par anticipation, les futures images de pages artistes.
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Limite la taille des uploads à 10 Mo et impose un type image.
+    function isValidImage() {
+      return request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    // Images liées aux posts d'actu — écriture réservée aux connectés
+    // (la vérification de rôle CM/Admin se fait déjà côté Firestore Rules
+    // sur la création du post ; ici on protège juste le fichier lui-même).
+    match /posts/{fileName} {
+      allow read: if true;
+      allow write: if isSignedIn() && isValidImage();
+      allow delete: if isSignedIn();
+    }
+
+    // Images de pages artistes (avatar, bannière...), si tu passes un jour
+    // à l'upload de fichiers plutôt qu'à des URLs externes.
+    match /artists/{artistId}/{fileName} {
+      allow read: if true;
+      allow write: if isSignedIn() && isValidImage();
+      allow delete: if isSignedIn();
+    }
+
+    // Avatars de profil utilisateur.
+    match /avatars/{userId}/{fileName} {
+      allow read: if true;
+      allow write: if isSignedIn() && request.auth.uid == userId && isValidImage();
+      allow delete: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Tout le reste est refusé par défaut.
+  }
+}

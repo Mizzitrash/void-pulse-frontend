@@ -1,0 +1,14 @@
+{
+  "name": "VØID PULSE",
+  "short_name": "VØID PULSE",
+  "description": "Label musical indépendant : artistes, prods exclusives et actualités.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "lang": "fr",
+  "icons": [
+    { "src": "/logo.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/logo.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}

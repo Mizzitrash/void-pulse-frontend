@@ -1,0 +1,12 @@
+User-agent: *
+Allow: /
+
+# Espaces privés : inutile de les faire explorer (ils sont de toute façon
+# protégés par ProtectedRoute et les Firestore Rules).
+Disallow: /admin
+Disallow: /community-manager
+Disallow: /profile
+Disallow: /checkout
+Disallow: /auth
+
+Sitemap: https://voidpulse.fr/sitemap.xml

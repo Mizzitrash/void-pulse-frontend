@@ -1,14 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
-
-// Vérifie la structure de tes dossiers :
-// - Si config est dans src/firebase/config.ts : '../firebase/config'
-// - Si config est dans src/firebase.ts : '../firebase'
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-
 import { useAuth } from '../context/AuthContext';
-import { ArrowLeft, Save, Plus, Trash2, Video, Music, Image as ImageIcon } from 'lucide-react';
+import { ArrowLeft, Save, Plus, Trash2, Video, Music, Image as ImageIcon, Loader2 } from 'lucide-react';
 
 interface Beat {
   id: string;
@@ -22,11 +17,13 @@ interface Beat {
 export const EditArtistPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  
-  // Récupération de l'auth avec fallback (au cas où votre contexte utilise user ou profile)
-  const auth = useAuth() as any;
-  const profile = auth?.profile || auth?.user;
-  const loading = auth?.loading ?? auth?.isLoading ?? false;
+
+  // Avant : cette page lisait `profile?.role` (singulier, minuscule), un
+  // champ qui n'existe pas dans AuthContext — celui-ci expose `roles`
+  // (pluriel, tableau, en MAJUSCULES : 'ADMIN', 'ARTISTE'...). Résultat :
+  // isAuthorized était TOUJOURS false, pour tout le monde, y compris les
+  // admins. On utilise maintenant les vrais champs du contexte.
+  const { profile, loading, hasPermission } = useAuth();
 
   const [formData, setFormData] = useState({
     name: '',
@@ -51,42 +48,64 @@ export const EditArtistPage: React.FC = () => {
   });
 
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [isFetching, setIsFetching] = useState(true);
 
-  // Vérification des droits : Admin OU l'artiste propriétaire du profil
-  const isAuthorized = profile?.role === 'admin' || (profile?.role === 'artist' && profile?.artistId === id);
+  // Vérification des droits : Admin/Fondateur, OU l'artiste propriétaire
+  // de CETTE page précise (rôle ARTISTE + artistId correspondant à l'id
+  // dans l'URL). hasPermission traite déjà FONDATEUR comme équivalent
+  // admin, et gère ARTIST/ARTISTE indifféremment — cohérent avec le reste
+  // du site (ArtistDetailPage, AdminDashboard).
+  const isAuthorized =
+    hasPermission('ADMIN') || (hasPermission('ARTISTE') && profile?.artistId === id);
 
   useEffect(() => {
     const fetchArtist = async () => {
-      if (!id) return;
-      const docRef = doc(db, 'artists', id);
-      const docSnap = await getDoc(docRef);
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        setFormData({
-          name: data.name || '',
-          genre: data.genre || '',
-          type: data.type || (data.genre?.toLowerCase().includes('beatmaker') ? 'beatmaker' : 'rapper'),
-          bio: data.bio || '',
-          image: data.image || '',
-          youtubeEmbed: data.youtubeEmbed || '',
-          spotifyUrl: data.spotifyUrl || '',
-          youtubeUrl: data.youtubeUrl || '',
-          instagramUrl: data.instagramUrl || '',
-          tiktokUrl: data.tiktokUrl || '',
-          beats: data.beats || [],
-        });
+      if (!id) {
+        setIsFetching(false);
+        return;
+      }
+      try {
+        const docRef = doc(db, 'artists', id);
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          setFormData({
+            name: data.name || '',
+            genre: data.genre || '',
+            type: data.type || (data.genre?.toLowerCase().includes('beatmaker') ? 'beatmaker' : 'rapper'),
+            bio: data.bio || '',
+            image: data.image || '',
+            youtubeEmbed: data.youtubeEmbed || data.youtubeClip || '',
+            spotifyUrl: data.spotifyUrl || '',
+            youtubeUrl: data.youtubeUrl || '',
+            instagramUrl: data.instagramUrl || '',
+            tiktokUrl: data.tiktokUrl || '',
+            beats: data.beats || [],
+          });
+        }
+      } catch (error) {
+        console.error('Erreur lors du chargement de la page artiste :', error);
+      } finally {
+        setIsFetching(false);
       }
     };
     fetchArtist();
   }, [id]);
 
-  if (loading) return <div className="text-center py-20 text-white font-mono">Chargement...</div>;
+  if (loading || isFetching) {
+    return (
+      <div className="min-h-[50vh] flex items-center justify-center text-neutral-400">
+        <Loader2 className="animate-spin" size={24} />
+      </div>
+    );
+  }
 
   if (!isAuthorized) {
     return (
       <div className="text-center py-20 text-white font-mono">
         <h2 className="text-2xl text-red-600 font-bold">ACCÈS REFUSÉ</h2>
-        <p className="mt-2 text-neutral-400">Vous n'avez pas la permission de modifier cette page.</p>
+        <p className="mt-2 text-neutral-400">Tu n'as pas la permission de modifier cette page.</p>
       </div>
     );
   }
@@ -124,18 +143,24 @@ export const EditArtistPage: React.FC = () => {
     if (!id) return;
 
     setSaving(true);
+    setSaveError(null);
     try {
       const docRef = doc(db, 'artists', id);
       const cleanedData = {
         ...formData,
         youtubeEmbed: formatYoutubeEmbed(formData.youtubeEmbed),
       };
-      await updateDoc(docRef, cleanedData);
-      
-      // Redirection vers la route de détail d'artiste
+      // setDoc + merge plutôt que updateDoc : fonctionne même si le
+      // document n'existe pas encore dans Firestore (mêmes raisons que
+      // pour ArtistDetailPage.tsx).
+      await setDoc(docRef, cleanedData, { merge: true });
+
       navigate(`/artists/${id}`);
     } catch (err) {
       console.error('Erreur lors de la sauvegarde :', err);
+      setSaveError(
+        "La sauvegarde a échoué. Vérifie que tu as bien les droits pour modifier cette page."
+      );
     } finally {
       setSaving(false);
     }
@@ -153,6 +178,10 @@ export const EditArtistPage: React.FC = () => {
       <h1 className="text-3xl font-black uppercase tracking-wider mb-8 border-b border-neutral-800 pb-4">
         Personnaliser ma page artiste
       </h1>
+
+      {saveError && (
+        <p className="mb-6 text-xs text-red-400 font-mono">{saveError}</p>
+      )}
 
       <form onSubmit={handleSubmit} className="space-y-8">
         {/* PROFIL & IDENTITÉ */}
@@ -332,7 +361,7 @@ export const EditArtistPage: React.FC = () => {
         <button
           type="submit"
           disabled={saving}
-          className="w-full py-4 bg-[#A00303] hover:bg-[#A00303]/80 font-mono font-bold uppercase tracking-widest text-sm rounded transition-all flex items-center justify-center gap-2 cursor-pointer"
+          className="w-full py-4 bg-[#A00303] hover:bg-[#A00303]/80 disabled:opacity-50 font-mono font-bold uppercase tracking-widest text-sm rounded transition-all flex items-center justify-center gap-2 cursor-pointer"
         >
           <Save size={16} />
           {saving ? 'Enregistrement...' : 'Sauvegarder les modifications'}

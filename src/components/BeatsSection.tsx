@@ -10,15 +10,18 @@ interface BeatsSectionProps {
 
 export const BeatsSection: React.FC<BeatsSectionProps> = ({ onOpenAuth }) => {
   const { addToCart } = useCart();
-  const { user } = useAuth();
+  // Avant : `const { user } = useAuth()` — cette propriété n'existe pas
+  // dans AuthContext (qui expose `firebaseUser` et `profile`), donc
+  // `user` valait toujours `undefined` et `!user` était toujours vrai :
+  // même connecté, on était systématiquement renvoyé vers /auth.
+  const { firebaseUser } = useAuth();
   const [currentBeat, setCurrentBeat] = useState<Beat | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const handleAcquireBeat = (beat: Beat) => {
-    if (!user) {
-      // Redirige vers la page de connexion si l'utilisateur n'est pas connecté
+    if (!firebaseUser) {
       onOpenAuth();
       return;
     }
@@ -26,7 +29,6 @@ export const BeatsSection: React.FC<BeatsSectionProps> = ({ onOpenAuth }) => {
   };
 
   const togglePlay = (beat: Beat) => {
-    // Si la prod est vendue, on bloque la lecture
     if (beat.status === 'sold') return;
 
     if (currentBeat?.id === beat.id) {
@@ -54,7 +56,6 @@ export const BeatsSection: React.FC<BeatsSectionProps> = ({ onOpenAuth }) => {
     }
   };
 
-  // Helper pour afficher le bon badge
   const renderStatusBadge = (status: BeatStatus) => {
     switch (status) {
       case 'coming_soon':
@@ -79,8 +80,7 @@ export const BeatsSection: React.FC<BeatsSectionProps> = ({ onOpenAuth }) => {
       <audio ref={audioRef} onEnded={() => setIsPlaying(false)} />
 
       <div className="max-w-7xl mx-auto px-6">
-        
-        {/* HEADER */}
+
         <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-16 gap-4">
           <div>
             <span className="text-[#A00303] text-xs font-bold tracking-[0.4em] uppercase">
@@ -95,35 +95,33 @@ export const BeatsSection: React.FC<BeatsSectionProps> = ({ onOpenAuth }) => {
           </p>
         </div>
 
-        {/* LISTE DES BEATS */}
         <div className="space-y-4">
           {BEATS_DATA.map((beat) => {
             const isCurrent = currentBeat?.id === beat.id;
             const isThisPlaying = isCurrent && isPlaying;
 
             return (
-              <div 
+              <div
                 key={beat.id}
                 className={`flex flex-col md:flex-row items-center justify-between p-4 md:p-6 rounded-xl border transition-all duration-300 gap-4 ${
                   beat.status === 'sold'
-                    ? 'bg-neutral-950/30 border-neutral-900/60 opacity-60 grayscale-[30%]' 
+                    ? 'bg-neutral-950/30 border-neutral-900/60 opacity-60 grayscale-[30%]'
                     : beat.status === 'coming_soon'
                     ? 'bg-neutral-950/80 border-amber-900/30'
-                    : isCurrent 
-                    ? 'bg-neutral-900/90 border-[#A00303] shadow-[0_0_15px_rgba(160,3,3,0.2)]' 
+                    : isCurrent
+                    ? 'bg-neutral-900/90 border-[#A00303] shadow-[0_0_15px_rgba(160,3,3,0.2)]'
                     : 'bg-neutral-950/60 border-neutral-900 hover:border-neutral-800'
                 }`}
               >
-                {/* INFOS GAUCHE */}
                 <div className="flex items-center gap-5 w-full md:w-auto">
-                  <button 
+                  <button
                     onClick={() => togglePlay(beat)}
                     disabled={beat.status === 'sold'}
                     className={`w-14 h-14 rounded-full flex items-center justify-center shrink-0 transition-all duration-300 ${
                       beat.status === 'sold'
                         ? 'bg-neutral-800 text-neutral-600 cursor-not-allowed'
-                        : isThisPlaying 
-                        ? 'bg-[#A00303] text-white shadow-[0_0_20px_rgba(160,3,3,0.6)]' 
+                        : isThisPlaying
+                        ? 'bg-[#A00303] text-white shadow-[0_0_20px_rgba(160,3,3,0.6)]'
                         : 'bg-white/10 text-white hover:bg-white hover:text-black'
                     }`}
                   >
@@ -136,9 +134,9 @@ export const BeatsSection: React.FC<BeatsSectionProps> = ({ onOpenAuth }) => {
                     )}
                   </button>
 
-                  <img 
-                    src={beat.coverUrl} 
-                    alt={beat.title} 
+                  <img
+                    src={beat.coverUrl}
+                    alt={beat.title}
                     className="w-14 h-14 rounded-lg object-cover border border-white/10 shrink-0"
                   />
 
@@ -155,7 +153,6 @@ export const BeatsSection: React.FC<BeatsSectionProps> = ({ onOpenAuth }) => {
                   </div>
                 </div>
 
-                {/* METADATA (BPM / KEY / TAGS) */}
                 <div className="flex flex-wrap items-center gap-3 w-full md:w-auto justify-start md:justify-center">
                   <span className="text-[10px] font-mono bg-neutral-900 text-neutral-300 px-3 py-1 rounded border border-white/5">
                     {beat.bpm} BPM
@@ -170,14 +167,13 @@ export const BeatsSection: React.FC<BeatsSectionProps> = ({ onOpenAuth }) => {
                   ))}
                 </div>
 
-                {/* BOUTON D'ACHAT / PRIX */}
                 <div className="flex items-center gap-4 w-full md:w-auto justify-between md:justify-end border-t md:border-t-0 border-neutral-800 pt-3 md:pt-0">
                   <span className={`font-mono text-sm font-bold ${beat.status === 'available' ? 'text-white' : 'text-neutral-500 line-through'}`}>
                     {beat.price}
                   </span>
-                  
+
                   {beat.status === 'available' && (
-                    <button 
+                    <button
                       onClick={() => handleAcquireBeat(beat)}
                       className="px-5 py-2.5 text-xs font-bold tracking-widest uppercase bg-white text-black hover:bg-[#A00303] hover:text-white transition-all duration-300 shadow-md hover:shadow-[0_0_15px_rgba(160,3,3,0.5)]"
                     >
@@ -202,7 +198,6 @@ export const BeatsSection: React.FC<BeatsSectionProps> = ({ onOpenAuth }) => {
           })}
         </div>
 
-        {/* PLAYER EN BAS DE L'ÉCRAN SI UNE PROD EST ACTIVE */}
         {currentBeat && (
           <div className="fixed bottom-0 left-0 w-full bg-black/95 border-t border-neutral-800 p-4 z-40 backdrop-blur-lg flex items-center justify-between px-6 animate-slideUp">
             <div className="flex items-center gap-4">
@@ -214,7 +209,7 @@ export const BeatsSection: React.FC<BeatsSectionProps> = ({ onOpenAuth }) => {
             </div>
 
             <div className="flex items-center gap-4">
-              <button 
+              <button
                 onClick={() => togglePlay(currentBeat)}
                 className="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center hover:bg-[#A00303] hover:text-white transition-all"
               >

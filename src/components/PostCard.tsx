@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { doc, updateDoc, increment, setDoc, deleteDoc, Timestamp } from 'firebase/firestore';
 import { ref, deleteObject } from 'firebase/storage';
 import { db, storage } from '../firebase';
+import { useAuth } from '../context/AuthContext';
 
 interface PostProps {
   id: string;
@@ -9,32 +10,38 @@ interface PostProps {
   imageUrl?: string;
   createdAt?: Timestamp | { toDate: () => Date };
   reactions?: { [key: string]: number };
-  isAdmin?: boolean; // 👈 Nouvelle prop optionnelle pour n'afficher le bouton qu'au CM/Admin
 }
 
 const EMOJIS = ['🔥', '💜', '⚡', '👀'];
 
-export const PostCard: React.FC<PostProps> = ({ 
-  id, 
-  text, 
-  imageUrl, 
-  createdAt, 
+export const PostCard: React.FC<PostProps> = ({
+  id,
+  text,
+  imageUrl,
+  createdAt,
   reactions = {},
-  isAdmin = true // Mis à true par défaut, à passer en dynamique selon le rôle si besoin
 }) => {
+  // Avant : isAdmin était une prop optionnelle avec `= true` par défaut —
+  // donc tout affichage du composant sans passer explicitement `isAdmin`
+  // montrait le bouton de suppression à N'IMPORTE QUI. On dérive
+  // maintenant le droit directement depuis le rôle réel de la personne
+  // connectée, jamais d'une prop qu'on pourrait oublier de préciser.
+  const { hasPermission } = useAuth();
+  const canDelete = hasPermission('COMMUNITY_MANAGER') || hasPermission('ADMIN');
+
   const [userReactions, setUserReactions] = useState<{ [key: string]: boolean }>({});
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
 
-  // Fonction pour supprimer le post (Firestore + Storage)
   const handleDelete = async () => {
     if (!window.confirm("Es-tu sûr de vouloir supprimer ce post ?")) return;
 
     setIsDeleting(true);
     try {
-      // 1. Suppression du document dans Firestore
+      // La vraie protection reste les Firestore Security Rules
+      // (allow delete: if isCommunityManager() || isAdminOrFounder()) —
+      // ce check côté client n'est qu'un confort d'affichage.
       await deleteDoc(doc(db, 'posts', id));
 
-      // 2. Si une image est liée, on tente de la supprimer du Storage
       if (imageUrl) {
         try {
           const imageRef = ref(storage, imageUrl);
@@ -45,14 +52,14 @@ export const PostCard: React.FC<PostProps> = ({
       }
     } catch (error) {
       console.error("Erreur lors de la suppression du post :", error);
-      alert("Impossible de supprimer le post.");
+      alert("Impossible de supprimer le post (droits insuffisants ?).");
       setIsDeleting(false);
     }
   };
 
   const handleReaction = async (emoji: string) => {
     const isReacted = userReactions[emoji];
-    
+
     setUserReactions(prev => ({ ...prev, [emoji]: !isReacted }));
 
     const postRef = doc(db, 'posts', id);
@@ -79,8 +86,7 @@ export const PostCard: React.FC<PostProps> = ({
 
   return (
     <div className="bg-neutral-900 border border-neutral-800 rounded-xl overflow-hidden mb-6 shadow-lg max-w-xl mx-auto">
-      
-      {/* En-tête anonyme avec bouton de suppression */}
+
       <div className="p-4 flex items-center justify-between border-b border-neutral-800/50">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-purple-600 to-indigo-500 flex items-center justify-center text-xs font-bold text-white shadow-inner">
@@ -94,8 +100,7 @@ export const PostCard: React.FC<PostProps> = ({
             {createdAt && 'toDate' in createdAt ? createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "À l'instant"}
           </span>
 
-          {/* Bouton de suppression */}
-          {isAdmin && (
+          {canDelete && (
             <button
               onClick={handleDelete}
               className="text-neutral-500 hover:text-red-400 transition-colors p-1 rounded-md hover:bg-neutral-800"
@@ -109,26 +114,23 @@ export const PostCard: React.FC<PostProps> = ({
         </div>
       </div>
 
-      {/* Texte du post */}
       {text && (
         <div className="p-4 text-neutral-200 text-sm whitespace-pre-line leading-relaxed">
           {text}
         </div>
       )}
 
-      {/* Image adaptative */}
       {imageUrl && (
         <div className="w-full bg-black/40 flex justify-center items-center overflow-hidden">
-          <img 
-            src={imageUrl} 
-            alt="Contenu du post" 
+          <img
+            src={imageUrl}
+            alt="Contenu du post"
             className="w-full h-auto max-h-[600px] object-contain rounded-b-none"
             loading="lazy"
           />
         </div>
       )}
 
-      {/* Barre de réactions */}
       <div className="p-3 bg-neutral-950/40 flex items-center gap-2 border-t border-neutral-800/40 flex-wrap">
         {EMOJIS.map(emoji => {
           const count = reactions?.[emoji] || 0;

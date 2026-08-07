@@ -1,13 +1,56 @@
 <!doctype html>
-<html lang="en">
+<html lang="fr">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>void-pulse-frontend</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+
+    <title>VØID PULSE — Label musical</title>
+    <meta name="description" content="VØID PULSE : label musical indépendant. Découvre notre roster d'artistes, notre catalogue de prods exclusives et les dernières actualités du label." />
+    <link rel="canonical" href="https://voidpulse.fr/" />
+    <meta name="theme-color" content="#000000" />
+
+    <link rel="icon" type="image/png" href="/logo.png" />
+    <link rel="apple-touch-icon" href="/logo.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="VØID PULSE" />
+    <meta property="og:locale" content="fr_FR" />
+    <meta property="og:url" content="https://voidpulse.fr/" />
+    <meta property="og:title" content="VØID PULSE — Label musical" />
+    <meta property="og:description" content="Label musical indépendant. Roster d'artistes, prods exclusives et actualités." />
+    <meta property="og:image" content="https://voidpulse.fr/logo.png" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="VØID PULSE — Label musical" />
+    <meta name="twitter:description" content="Label musical indépendant. Roster d'artistes, prods exclusives et actualités." />
+    <meta name="twitter:image" content="https://voidpulse.fr/logo.png" />
+
+    <!-- Origines tierces réellement utilisées au chargement : on ouvre la
+         connexion en avance plutôt que d'attendre le premier appel. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="preconnect" href="https://firestore.googleapis.com" />
+    <link rel="dns-prefetch" href="https://identitytoolkit.googleapis.com" />
+    <link rel="dns-prefetch" href="https://firebasestorage.googleapis.com" />
+
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "MusicGroup",
+      "name": "VØID PULSE",
+      "url": "https://voidpulse.fr/",
+      "logo": "https://voidpulse.fr/logo.png",
+      "genre": ["Trap", "Drill", "Hip-Hop"],
+      "description": "Label musical indépendant : roster d'artistes et catalogue de prods exclusives."
+    }
+    </script>
   </head>
   <body>
     <div id="root"></div>
+    <noscript>Ce site nécessite JavaScript pour fonctionner.</noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

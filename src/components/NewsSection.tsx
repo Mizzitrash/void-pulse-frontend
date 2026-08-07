@@ -10,21 +10,21 @@ type NewsPostWithReactions = NewsPost & {
   reactions?: Record<string, number>;
 };
 
-// Liste d'émojis suggérés pour le menu rapide
 const QUICK_EMOJIS = ['🔥', '💜', '⚡', '👀', '💯', '💀', '🚀', '❤️'];
 
 export const NewsSection: React.FC = () => {
-  const { user } = useAuth();
+  const { hasPermission } = useAuth();
   const [posts, setPosts] = useState<NewsPostWithReactions[]>([]);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [userReactions, setUserReactions] = useState<{ [postId: string]: { [emoji: string]: boolean } }>({});
-  
-  // État pour afficher/masquer le menu de sélection d'émojis par post
   const [activePickerId, setActivePickerId] = useState<string | null>(null);
 
-  const userRole = (user as { role?: string } | null)?.role;
-  const canDelete = Boolean(userRole === 'admin' || userRole === 'cm' || user);
+  // Avant : `canDelete = Boolean(userRole === 'admin' || userRole === 'cm' || user)`
+  // — le `|| user` rendait les deux premières conditions inutiles : DÈS
+  // qu'on était connecté, peu importe le rôle, on pouvait supprimer
+  // n'importe quel post. On vérifie maintenant le vrai rôle.
+  const canDelete = hasPermission('COMMUNITY_MANAGER') || hasPermission('ADMIN');
 
   useEffect(() => {
     const unsubscribe = subscribeToPosts((firebasePosts) => {
@@ -35,11 +35,12 @@ export const NewsSection: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
-  // Correction : Transmet l'URL de l'image pour la supprimer dans Storage
   const handleDelete = async (id?: string, imageUrl?: string) => {
     if (!id) return;
     if (window.confirm("Supprimer définitivement ce post du flux ?")) {
       try {
+        // La vraie protection reste les Firestore Security Rules — ce
+        // check n'est qu'un confort d'affichage côté client.
         await deletePost(id, imageUrl);
       } catch (error) {
         console.error("Erreur lors de la suppression :", error);
@@ -57,7 +58,6 @@ export const NewsSection: React.FC = () => {
   const handleReaction = async (postId: string, emoji: string) => {
     const isReacted = userReactions[postId]?.[emoji];
 
-    // Mise à jour locale du state
     setUserReactions(prev => ({
       ...prev,
       [postId]: {
@@ -66,10 +66,8 @@ export const NewsSection: React.FC = () => {
       }
     }));
 
-    // Ferme le picker si ouvert
     setActivePickerId(null);
 
-    // Mise à jour Firestore
     const postRef = doc(db, 'posts', postId);
     try {
       await updateDoc(postRef, {
@@ -132,25 +130,21 @@ export const NewsSection: React.FC = () => {
           </div>
         ) : (
           posts.map((post) => {
-            // Calcul du nombre total de réactions sur le post
-            const totalReactions = post.reactions 
+            const totalReactions = post.reactions
               ? Object.values(post.reactions).reduce((acc, curr) => acc + (curr > 0 ? curr : 0), 0)
               : 0;
 
-            // Liste de tous les émojis ayant au moins 1 réaction
-            const activeEmojis = post.reactions 
+            const activeEmojis = post.reactions
               ? Object.keys(post.reactions).filter(emoji => (post.reactions?.[emoji] || 0) > 0)
               : [];
 
-            // On fusionne avec la liste par défaut si le post n'a encore aucune réaction
             const displayedEmojis = Array.from(new Set([...(activeEmojis.length > 0 ? activeEmojis : QUICK_EMOJIS.slice(0, 4))]));
 
             return (
-              <article 
-                key={post.id} 
+              <article
+                key={post.id}
                 className="bg-neutral-950 border border-neutral-900 hover:border-neutral-800 rounded-2xl p-6 transition-all shadow-xl relative group"
               >
-                {/* En-tête anonyme */}
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-full overflow-hidden bg-gradient-to-tr from-purple-900/50 to-neutral-900 border border-purple-500/30 flex items-center justify-center shrink-0">
@@ -192,19 +186,17 @@ export const NewsSection: React.FC = () => {
 
                 {post.imageUrl && (
                   <div className="mb-6 rounded-xl overflow-hidden border border-neutral-800 bg-black/40 flex justify-center items-center">
-                    <img 
-                      src={post.imageUrl} 
-                      alt={post.title || "Illustration d'actualité"} 
+                    <img
+                      src={post.imageUrl}
+                      alt={post.title || "Illustration d'actualité"}
                       className="w-full h-auto max-h-[600px] object-contain"
                       loading="lazy"
                     />
                   </div>
                 )}
 
-                {/* Barre de réactions + Total + Partage */}
                 <div className="flex items-center justify-between pt-4 border-t border-neutral-900 text-xs font-mono text-neutral-500 flex-wrap gap-3 relative">
-                  
-                  {/* Zone de Réactions */}
+
                   <div className="flex items-center gap-2 flex-wrap relative">
                     {displayedEmojis.map(emoji => {
                       const count = post.reactions?.[emoji] || 0;
@@ -226,7 +218,6 @@ export const NewsSection: React.FC = () => {
                       );
                     })}
 
-                    {/* Bouton '+' pour ajouter une réaction personnalisée */}
                     <div className="relative">
                       <button
                         onClick={() => post.id && setActivePickerId(activePickerId === post.id ? null : post.id)}
@@ -236,7 +227,6 @@ export const NewsSection: React.FC = () => {
                         <Plus size={14} />
                       </button>
 
-                      {/* Popover rapide de choix d'émojis */}
                       {activePickerId === post.id && (
                         <div className="absolute left-0 bottom-10 bg-neutral-900 border border-neutral-800 p-2 rounded-xl shadow-2xl flex items-center gap-1 z-20 animate-in fade-in slide-in-from-bottom-2">
                           {QUICK_EMOJIS.map(emoji => (
@@ -252,7 +242,6 @@ export const NewsSection: React.FC = () => {
                       )}
                     </div>
 
-                    {/* Badge Compteur Total de Réactions */}
                     {totalReactions > 0 && (
                       <span className="text-[10px] text-neutral-500 ml-1 font-mono uppercase tracking-wider">
                         ({totalReactions} {totalReactions > 1 ? 'réactions' : 'réaction'})
@@ -260,8 +249,7 @@ export const NewsSection: React.FC = () => {
                     )}
                   </div>
 
-                  {/* Bouton Partager */}
-                  <button 
+                  <button
                     onClick={() => handleShare(post.id)}
                     className="flex items-center gap-2 hover:text-white transition-colors cursor-pointer ml-auto"
                   >

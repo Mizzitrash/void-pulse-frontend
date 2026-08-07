@@ -6,14 +6,18 @@ import { Send, MessageSquare, ArrowLeft, ShieldCheck, User, Image as ImageIcon, 
 import { Link } from 'react-router-dom';
 
 export const CommunityManagerPage: React.FC = () => {
-  const { user } = useAuth();
+  // Avant : `const { user } = useAuth()` — AuthContext n'expose pas `user`,
+  // seulement `profile` et `firebaseUser`. Résultat : l'avatar ne
+  // s'affichait jamais et l'auteur retombait toujours sur le texte
+  // générique "COMMUNITY MANAGER" au lieu du vrai pseudo.
+  const { profile } = useAuth();
   const [posts, setPosts] = useState<NewsPost[]>([]);
   const [content, setContent] = useState('');
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
+
   const MAX_CHARS = 280;
 
   useEffect(() => {
@@ -24,7 +28,6 @@ export const CommunityManagerPage: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
-  // Gestion de la sélection d'image
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -37,7 +40,6 @@ export const CommunityManagerPage: React.FC = () => {
     }
   };
 
-  // Annuler l'image sélectionnée
   const handleRemoveImage = () => {
     setImageFile(null);
     if (imagePreview) URL.revokeObjectURL(imagePreview);
@@ -45,7 +47,6 @@ export const CommunityManagerPage: React.FC = () => {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  // Publication sur Firebase (Upload image + création document)
   const handlePublish = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!content.trim() || content.length > MAX_CHARS || isSubmitting) return;
@@ -54,21 +55,18 @@ export const CommunityManagerPage: React.FC = () => {
       setIsSubmitting(true);
       let uploadedImageUrl = '';
 
-      // 1. Si une image est sélectionnée, on l'uploade d'abord sur Storage
       if (imageFile) {
         uploadedImageUrl = await uploadPostImage(imageFile);
       }
 
-      // 2. On crée le post dans Firestore avec l'URL de l'image
       await createPost({
         title: '',
         content: content.trim(),
-        author: user?.username || 'COMMUNITY MANAGER',
+        author: profile?.username || 'COMMUNITY MANAGER',
         category: 'ANNONCE',
         imageUrl: uploadedImageUrl || undefined,
       });
 
-      // Réinitialisation de l'éditeur
       setContent('');
       handleRemoveImage();
     } catch (error) {
@@ -103,8 +101,8 @@ export const CommunityManagerPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-black text-white pt-28 pb-16 px-6 max-w-3xl mx-auto">
-      <Link 
-        to="/" 
+      <Link
+        to="/"
         className="inline-flex items-center gap-2 text-xs font-mono text-neutral-400 hover:text-white transition-colors mb-8"
       >
         <ArrowLeft size={16} /> RETOUR AU SITE
@@ -121,12 +119,11 @@ export const CommunityManagerPage: React.FC = () => {
         </div>
       </div>
 
-      {/* ÉDITEUR DE POST */}
       <div className="bg-neutral-950 border border-neutral-900 rounded-2xl p-6 shadow-2xl mb-10">
         <div className="flex gap-4">
           <div className="w-10 h-10 rounded-full overflow-hidden bg-neutral-900 border border-neutral-800 shrink-0 flex items-center justify-center">
-            {user?.avatarUrl ? (
-              <img src={user.avatarUrl} alt={user.username || 'Avatar'} className="w-full h-full object-cover" />
+            {profile?.avatarUrl ? (
+              <img src={profile.avatarUrl} alt={profile.username || 'Avatar'} className="w-full h-full object-cover" />
             ) : (
               <User size={20} className="text-neutral-500" />
             )}
@@ -142,7 +139,6 @@ export const CommunityManagerPage: React.FC = () => {
               className="w-full bg-black border border-neutral-800 rounded-xl p-4 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-[#A00303] transition-all resize-none font-sans"
             />
 
-            {/* PRÉVISUALISATION DE L'IMAGE */}
             {imagePreview && (
               <div className="relative rounded-xl overflow-hidden border border-neutral-800 max-h-60 group">
                 <img src={imagePreview} alt="Aperçu" className="w-full h-full object-cover" />
@@ -159,7 +155,6 @@ export const CommunityManagerPage: React.FC = () => {
 
             <div className="flex justify-between items-center pt-2">
               <div className="flex items-center gap-4">
-                {/* Input caché pour l'upload */}
                 <input
                   type="file"
                   ref={fileInputRef}
@@ -167,8 +162,7 @@ export const CommunityManagerPage: React.FC = () => {
                   accept="image/png, image/jpeg, image/webp, image/gif"
                   className="hidden"
                 />
-                
-                {/* Bouton d'ajout d'image */}
+
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
@@ -195,7 +189,6 @@ export const CommunityManagerPage: React.FC = () => {
         </div>
       </div>
 
-      {/* HISTORIQUE DES POSTS */}
       <div className="space-y-4">
         <h2 className="text-xs font-mono font-bold uppercase tracking-wider text-neutral-400 flex items-center gap-2">
           <MessageSquare size={14} className="text-[#A00303]" /> POSTS PUBLIÉS ({posts.length})
@@ -218,7 +211,7 @@ export const CommunityManagerPage: React.FC = () => {
                     </span>
                   </div>
                   <p className="text-sm text-neutral-300 mt-2 whitespace-pre-wrap leading-relaxed">{post.content}</p>
-                  
+
                   {post.imageUrl && (
                     <div className="mt-3 rounded-lg overflow-hidden border border-neutral-900 max-h-48">
                       <img src={post.imageUrl} alt="Contenu du post" className="w-full h-full object-cover" />
