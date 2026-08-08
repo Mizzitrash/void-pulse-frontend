@@ -9,7 +9,6 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // Gère le cas où "roles" est une string unique OU un tableau.
     function getRoles() {
       let roles = get(/databases/$(database)/documents/users/$(request.auth.uid)).data.roles;
       return roles is list ? roles : [roles];
@@ -33,9 +32,6 @@ service cloud.firestore {
       return isSignedIn() && ('REALISATEUR' in getRoles());
     }
 
-    // Le MANAGER gère le roster : il peut éditer la page de N'IMPORTE QUEL
-    // artiste (contrairement à un ARTISTE, limité à la sienne) et traiter
-    // les candidatures. Aucun pouvoir sur les rôles ni les commandes.
     function isManager() {
       return isSignedIn() && ('MANAGER' in getRoles());
     }
@@ -65,16 +61,28 @@ service cloud.firestore {
         isCommunityManager()
       );
 
-      allow create: if isSignedIn() && request.auth.uid == userId;
+      // ⚠️ CORRECTIF CRITIQUE — escalade de privilèges.
+      // L'ancienne règle (`allow create: if request.auth.uid == userId`)
+      // laissait choisir le CONTENU du document créé. Un attaquant pouvait
+      // s'inscrire via l'API Auth puis écrire directement dans Firestore
+      // un profil avec roles: ['ADMIN'], sans jamais passer par le site :
+      // isAdminOrFounder() relisait ce document et lui accordait tout.
+      // On impose désormais le rôle de départ et on interdit de se lier
+      // une page artiste dès la création.
+      allow create: if isSignedIn()
+        && request.auth.uid == userId
+        && request.resource.data.roles == ['USER']
+        && !('artistId' in request.resource.data);
 
       // Modification de son propre profil, SANS toucher à roles ni artistId.
-      // .get(champ, défaut) et non .champ : accéder à une clé absente d'une
-      // map fait planter l'évaluation de la règle entière.
       allow update: if isSignedIn() && request.auth.uid == userId
         && request.resource.data.get('roles', null) == resource.data.get('roles', null)
         && request.resource.data.get('artistId', null) == resource.data.get('artistId', null);
 
       allow update: if isAdminOrFounder();
+
+      // Aucune suppression de compte depuis le client.
+      allow delete: if false;
     }
 
     // --- Collection artists ---
@@ -92,10 +100,16 @@ service cloud.firestore {
       allow read: if true;
       allow create: if isCommunityManager() || isAdminOrFounder();
 
-      // Réactions ouvertes à tout connecté, mais SEULEMENT sur ce champ.
+      // Les réactions restent ouvertes à tout connecté, mais on plafonne
+      // désormais le nombre d'émojis distincts. Sans cette limite, un
+      // compte pouvait écrire des milliers de clés dans le champ et gonfler
+      // le document jusqu'au plafond de 1 Mo de Firestore.
       allow update: if isSignedIn() && (
         (isCommunityManager() || isAdminOrFounder()) ||
-        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions']))
+        (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions'])
+          && request.resource.data.reactions.keys().size() <= 20
+        )
       );
 
       allow delete: if isCommunityManager() || isAdminOrFounder();
@@ -106,8 +120,13 @@ service cloud.firestore {
     match /orders/{orderId} {
       allow read: if isSignedIn() &&
         (resource.data.uid == request.auth.uid || isAdminOrFounder());
-      allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid;
-      // Une commande est un historique immuable une fois créée.
+
+      // Le statut est imposé à la création : personne ne peut déposer une
+      // commande déjà marquée comme payée.
+      allow create: if isSignedIn()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.status == 'simulated';
+
       allow update: if isAdminOrFounder();
       allow delete: if isAdminOrFounder();
     }
@@ -122,8 +141,6 @@ service cloud.firestore {
     }
 
     // --- Collection submissions (candidatures "Rejoins-nous") ---
-    // Validation stricte de la forme du document : une écriture ouverte ne
-    // doit pas pouvoir servir à stocker n'importe quoi ni à saturer la base.
 
     function isValidSubmission() {
       let d = request.resource.data;
@@ -149,21 +166,15 @@ service cloud.firestore {
     }
 
     match /submissions/{submissionId} {
-      // Les candidatures contiennent email et téléphone : jamais publiques.
       allow read: if isManager() || isAdminOrFounder();
-      allow create: if isValidSubmission();
+      // La page candidature exige désormais un compte : on l'impose aussi
+      // côté serveur plutôt que de s'en remettre au routage React.
+      allow create: if isSignedIn() && isValidSubmission();
       allow update, delete: if isManager() || isAdminOrFounder();
     }
 
     // --- Collection team (fiches publiques de l'équipe) ---
-    // L'identifiant du document EST l'UID de la personne : chacun gère sa
-    // fiche depuis son profil sans qu'on ait à ouvrir la lecture de /users.
-    // Les règles s'appliquant au document entier, on ne peut pas exposer une
-    // bio publique tout en masquant l'email de compte dans le même doc.
 
-    // Seules les fonctions du label ont une fiche publique : sans cette
-    // condition, n'importe quel membre inscrit pouvait se faire apparaître
-    // sur la page d'accueil du site.
     function canHaveTeamCard() {
       return isCommunityManager() || isRealisateur() || isManager() || isAdminOrFounder();
     }
@@ -187,8 +198,6 @@ service cloud.firestore {
 
     match /team/{uid} {
       allow read: if true;
-      // Chacun ne peut écrire que SA fiche, et seulement s'il occupe une
-      // fonction au label ; un admin peut tout corriger.
       allow write: if isSignedIn() && request.auth.uid == uid
         && canHaveTeamCard() && isValidTeamCard();
       allow write: if isAdminOrFounder();

@@ -1,39 +1,33 @@
 import React, { useState } from 'react';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
+import { useDocumentMeta } from '../hooks/useDocumentMeta';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
-import { ArrowLeft, ShieldCheck, CreditCard, CheckCircle2, Loader2 } from 'lucide-react';
+import { ArrowLeft, ShieldCheck, CreditCard, CheckCircle2, Loader2, Lock } from 'lucide-react';
 
 interface CheckoutPageProps {
   onBack: () => void;
 }
 
 export const CheckoutPage: React.FC<CheckoutPageProps> = ({ onBack }) => {
+  useDocumentMeta({ title: 'Paiement' });
+
   const { cart, totalPrice, clearCart } = useCart();
   const { firebaseUser } = useAuth();
+
   const [isSuccess, setIsSuccess] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  // Avant : la commande n'était JAMAIS enregistrée nulle part — le
-  // "succès" était purement visuel, sans aucune trace en base. On
-  // enregistre maintenant un document dans `orders`, à la fois pour ton
-  // suivi (quels beats se vendent, à qui) et pour que le client ait un
-  // historique de ses achats. Note : on ne stocke JAMAIS les données de
-  // carte bancaire (numéro, CVC) — ce n'est qu'une simulation de
-  // paiement ; un vrai paiement doit passer par un prestataire
-  // (Stripe, etc.) et un backend dédié, jamais par une écriture directe
-  // depuis le client comme ici.
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
     if (!firebaseUser) {
-      setSubmitError("Tu dois être connecté pour valider une commande.");
+      setSubmitError('Tu dois être connecté pour valider une commande.');
       return;
     }
 
@@ -41,6 +35,11 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ onBack }) => {
     setSubmitError(null);
 
     try {
+      // La commande n'était autrefois enregistrée nulle part : l'écran de
+      // succès s'affichait sans qu'aucune trace n'existe en base. On ne
+      // stocke en revanche JAMAIS les données de carte — il s'agit d'une
+      // simulation, un vrai paiement passerait par un prestataire et un
+      // serveur dédié, jamais par une écriture directe depuis le client.
       await addDoc(collection(db, 'orders'), {
         uid: firebaseUser.uid,
         customer: { firstName, lastName, email },
@@ -51,7 +50,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ onBack }) => {
           price: beat.price,
         })),
         total: totalPrice,
-        status: 'simulated', // pas de vrai paiement branché pour l'instant
+        status: 'simulated',
         createdAt: serverTimestamp(),
       });
 
@@ -59,26 +58,36 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ onBack }) => {
       clearCart();
     } catch (error) {
       console.error("Erreur lors de l'enregistrement de la commande :", error);
-      setSubmitError("Une erreur est survenue lors de la validation. Réessaie.");
+      setSubmitError('Une erreur est survenue lors de la validation. Réessaie.');
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  const fieldClass =
+    'w-full border border-neutral-800 bg-black p-3.5 font-mono text-xs text-white placeholder-neutral-700 outline-none transition-colors focus:border-void-accent';
+  const microLabel = 'mb-1.5 block font-mono text-[10px] uppercase tracking-wider text-neutral-500';
+
   if (isSuccess) {
     return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center p-6 border-t border-void-border">
-        <div className="max-w-md w-full bg-neutral-950 p-8 rounded-2xl border border-void-accent/40 text-center animate-scaleUp">
-          <CheckCircle2 className="text-emerald-500 mx-auto mb-4" size={56} />
-          <h2 className="text-3xl font-black uppercase tracking-tight">Commande Validée</h2>
-          <p className="text-neutral-400 font-mono text-xs mt-3 uppercase tracking-wider leading-relaxed">
-            Un email contenant les fichiers audio HD (.WAV / .MP3) et les contrats de licence d'exploitation a été envoyé à ton adresse.
+      <div className="flex min-h-screen items-center justify-center bg-black px-6">
+        <div className="w-full max-w-md border border-void-accent/40 bg-neutral-950 p-10 text-center">
+          <CheckCircle2 className="mx-auto text-emerald-500" size={52} aria-hidden="true" />
+          <p className="mt-6 font-mono text-[10px] uppercase tracking-[0.4em] text-void-accent">
+            Confirmation
+          </p>
+          <h1 className="mt-3 text-3xl font-black uppercase leading-none tracking-tight text-white">
+            Commande validée
+          </h1>
+          <p className="mt-5 text-sm font-light leading-relaxed text-neutral-400">
+            Un email contenant les fichiers audio HD et les contrats de licence
+            d'exploitation a été envoyé à ton adresse.
           </p>
           <button
             onClick={onBack}
-            className="mt-8 px-8 py-3 bg-white text-black font-bold text-xs tracking-widest uppercase hover:bg-void-accent hover:text-white transition-all"
+            className="mt-8 w-full border border-white/20 py-4 font-mono text-[10px] font-bold uppercase tracking-[0.25em] text-white transition-all hover:border-void-accent hover:bg-void-accent"
           >
-            Retourner sur le site
+            Retour au site
           </button>
         </div>
       </div>
@@ -86,129 +95,165 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ onBack }) => {
   }
 
   return (
-    <div className="min-h-screen bg-black text-white py-12 px-6 border-t border-void-border">
-      <div className="max-w-5xl mx-auto">
+    <div className="min-h-screen bg-black px-6 py-16">
+      <div className="mx-auto max-w-6xl">
         <button
           onClick={onBack}
-          className="flex items-center gap-2 text-neutral-400 hover:text-white text-xs font-mono tracking-widest uppercase mb-8"
+          className="mb-10 inline-flex items-center gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-400 transition-colors hover:text-white"
         >
-          <ArrowLeft size={16} /> Revenir au catalogue
+          <ArrowLeft size={14} aria-hidden="true" /> Revenir au catalogue
         </button>
 
-        <h1 className="text-4xl md:text-5xl font-black tracking-tight uppercase mb-12">
-          PAIEMENT SÉCURISÉ <span className="text-void-accent">VØID</span>
-        </h1>
+        <header className="mb-12 border-b border-white/10 pb-8">
+          <p className="font-mono text-[10px] uppercase tracking-[0.4em] text-void-accent">
+            Étape finale
+          </p>
+          <h1 className="mt-3 text-4xl font-black uppercase leading-none tracking-tight text-white md:text-6xl">
+            Paiement
+          </h1>
+        </header>
 
         {!firebaseUser && (
-          <div className="mb-8 p-4 bg-amber-950/40 border border-amber-800/50 rounded-xl text-amber-300 text-xs font-mono">
+          <p role="alert" className="mb-10 border border-amber-800/50 bg-amber-950/40 px-5 py-4 font-mono text-xs text-amber-300">
             Tu dois être connecté pour valider une commande.
-          </div>
+          </p>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
+        <div className="grid grid-cols-1 gap-12 lg:grid-cols-[1.4fr_1fr]">
 
-          <div className="lg:col-span-7 space-y-6">
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="bg-neutral-950 p-6 rounded-xl border border-neutral-900 space-y-4">
-                <h3 className="font-bold text-sm tracking-wider uppercase text-neutral-300">1. Vos Informations</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <input
-                    required
-                    type="text"
-                    placeholder="Prénom"
-                    value={firstName}
-                    onChange={(e) => setFirstName(e.target.value)}
-                    className="w-full bg-black border border-neutral-800 p-3 text-xs font-mono text-white rounded focus:border-void-accent outline-none"
-                  />
-                  <input
-                    required
-                    type="text"
-                    placeholder="Nom / Nom d'artiste"
-                    value={lastName}
-                    onChange={(e) => setLastName(e.target.value)}
-                    className="w-full bg-black border border-neutral-800 p-3 text-xs font-mono text-white rounded focus:border-void-accent outline-none"
-                  />
-                </div>
-                <input
-                  required
-                  type="email"
-                  placeholder="Adresse email (pour recevoir les fichiers)"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full bg-black border border-neutral-800 p-3 text-xs font-mono text-white rounded focus:border-void-accent outline-none"
-                />
-              </div>
+          <form onSubmit={handleSubmit} className="space-y-10">
+            <section>
+              <h2 className="flex items-center gap-3 font-mono text-[10px] font-bold uppercase tracking-[0.3em] text-neutral-400">
+                <span className="text-void-accent">01</span> Tes informations
+                <span className="h-px flex-1 bg-white/10" />
+              </h2>
 
-              <div className="bg-neutral-950 p-6 rounded-xl border border-neutral-900 space-y-4">
-                <h3 className="font-bold text-sm tracking-wider uppercase text-neutral-300 flex items-center gap-2">
-                  <CreditCard size={18} /> 2. Mode de Paiement
-                </h3>
-                <p className="text-[10px] text-neutral-500 font-mono">
-                  Simulation — aucune donnée de carte n'est envoyée ni stockée.
-                </p>
-                <input required type="text" placeholder="Numéro de carte" className="w-full bg-black border border-neutral-800 p-3 text-xs font-mono text-white rounded focus:border-void-accent outline-none" />
-                <div className="grid grid-cols-2 gap-4">
-                  <input required type="text" placeholder="MM/AA" className="w-full bg-black border border-neutral-800 p-3 text-xs font-mono text-white rounded focus:border-void-accent outline-none" />
-                  <input required type="text" placeholder="CVC" className="w-full bg-black border border-neutral-800 p-3 text-xs font-mono text-white rounded focus:border-void-accent outline-none" />
-                </div>
-              </div>
-
-              {submitError && (
-                <p className="text-xs text-red-400 font-mono">{submitError}</p>
-              )}
-
-              <button
-                type="submit"
-                disabled={isSubmitting || !firebaseUser || cart.length === 0}
-                className="w-full py-4 bg-void-accent text-white font-black text-sm tracking-[0.2em] uppercase hover:bg-red-700 disabled:opacity-50 transition-all flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(160,3,3,0.4)]"
-              >
-                {isSubmitting ? (
-                  <Loader2 size={18} className="animate-spin" />
-                ) : (
-                  <>PAYER {totalPrice.toFixed(2)} €</>
-                )}
-              </button>
-            </form>
-          </div>
-
-          <div className="lg:col-span-5 bg-neutral-950 p-6 rounded-xl border border-neutral-900 h-fit space-y-6">
-            <h3 className="font-bold text-sm tracking-wider uppercase text-white border-b border-neutral-800 pb-4">
-              Récapitulatif de la commande
-            </h3>
-
-            <div className="space-y-4 max-h-[300px] overflow-y-auto">
-              {cart.map((beat) => (
-                <div key={beat.id} className="flex justify-between items-center text-xs">
+              <div className="mt-6 space-y-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div>
-                    <p className="font-bold uppercase text-white">{beat.title}</p>
-                    <p className="text-[10px] text-neutral-400 font-mono">{beat.producer}</p>
+                    <label htmlFor="c-first" className={microLabel}>Prénom</label>
+                    <input id="c-first" required type="text" autoComplete="given-name"
+                      value={firstName} onChange={(e) => setFirstName(e.target.value)}
+                      className={fieldClass} />
                   </div>
-                  <span className="font-mono text-white">{beat.price}</span>
+                  <div>
+                    <label htmlFor="c-last" className={microLabel}>Nom / nom d'artiste</label>
+                    <input id="c-last" required type="text" autoComplete="family-name"
+                      value={lastName} onChange={(e) => setLastName(e.target.value)}
+                      className={fieldClass} />
+                  </div>
                 </div>
-              ))}
+                <div>
+                  <label htmlFor="c-mail" className={microLabel}>
+                    Email — pour recevoir les fichiers
+                  </label>
+                  <input id="c-mail" required type="email" autoComplete="email"
+                    value={email} onChange={(e) => setEmail(e.target.value)}
+                    className={fieldClass} />
+                </div>
+              </div>
+            </section>
+
+            <section>
+              <h2 className="flex items-center gap-3 font-mono text-[10px] font-bold uppercase tracking-[0.3em] text-neutral-400">
+                <span className="text-void-accent">02</span> Paiement
+                <span className="h-px flex-1 bg-white/10" />
+              </h2>
+
+              <p className="mt-4 flex items-center gap-2 font-mono text-[10px] uppercase tracking-wider text-neutral-600">
+                <Lock size={11} aria-hidden="true" />
+                Simulation — aucune donnée de carte n'est transmise ni conservée
+              </p>
+
+              <div className="mt-6 space-y-4">
+                <div>
+                  <label htmlFor="c-card" className={microLabel}>Numéro de carte</label>
+                  <div className="relative">
+                    <CreditCard size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-700" aria-hidden="true" />
+                    <input id="c-card" required type="text" inputMode="numeric"
+                      placeholder="0000 0000 0000 0000"
+                      className={`${fieldClass} pl-10`} />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label htmlFor="c-exp" className={microLabel}>Expiration</label>
+                    <input id="c-exp" required type="text" placeholder="MM/AA" className={fieldClass} />
+                  </div>
+                  <div>
+                    <label htmlFor="c-cvc" className={microLabel}>CVC</label>
+                    <input id="c-cvc" required type="text" placeholder="123" className={fieldClass} />
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            {submitError && (
+              <p role="alert" className="font-mono text-xs text-red-400">{submitError}</p>
+            )}
+
+            <button
+              type="submit"
+              disabled={isSubmitting || !firebaseUser || cart.length === 0}
+              className="flex w-full items-center justify-center gap-3 border border-void-accent bg-void-accent py-5 font-mono text-xs font-bold uppercase tracking-[0.3em] text-white transition-all hover:bg-transparent hover:text-void-accent disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {isSubmitting ? (
+                <Loader2 size={18} className="animate-spin" aria-hidden="true" />
+              ) : (
+                <>Payer {totalPrice.toFixed(2)} €</>
+              )}
+            </button>
+          </form>
+
+          {/* Récapitulatif collant : sur un écran haut, il reste visible
+              pendant qu'on remplit le formulaire, plutôt que de disparaître
+              en haut de page. */}
+          <aside className="h-fit lg:sticky lg:top-28">
+            <h2 className="flex items-center gap-3 font-mono text-[10px] font-bold uppercase tracking-[0.3em] text-neutral-400">
+              Récapitulatif <span className="h-px flex-1 bg-white/10" />
+            </h2>
+
+            <div className="mt-6 border border-neutral-900 bg-neutral-950">
+              <ul className="max-h-72 divide-y divide-neutral-900 overflow-y-auto">
+                {cart.map((beat) => (
+                  <li key={beat.id} className="flex items-center gap-3 p-4">
+                    <img src={beat.coverUrl} alt="" className="h-11 w-11 shrink-0 border border-white/10 object-cover" />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-xs font-black uppercase tracking-tight text-white">
+                        {beat.title}
+                      </p>
+                      <p className="font-mono text-[10px] uppercase tracking-widest text-neutral-500">
+                        {beat.producer}
+                      </p>
+                    </div>
+                    <span className="shrink-0 font-mono text-xs text-white">{beat.price}</span>
+                  </li>
+                ))}
+              </ul>
+
+              <div className="space-y-2.5 border-t border-neutral-900 p-5 font-mono text-xs">
+                <div className="flex justify-between text-neutral-500">
+                  <span>Sous-total</span>
+                  <span>{totalPrice.toFixed(2)} €</span>
+                </div>
+                <div className="flex justify-between text-neutral-500">
+                  <span>Frais de licence</span>
+                  <span className="text-emerald-500">Offerts</span>
+                </div>
+                <div className="flex items-end justify-between border-t border-neutral-900 pt-3">
+                  <span className="uppercase tracking-wider text-neutral-400">Total</span>
+                  <span className="text-2xl font-black leading-none text-void-accent">
+                    {totalPrice.toFixed(2)} €
+                  </span>
+                </div>
+              </div>
             </div>
 
-            <div className="border-t border-neutral-800 pt-4 space-y-2 font-mono text-xs">
-              <div className="flex justify-between text-neutral-400">
-                <span>Sous-total</span>
-                <span>{totalPrice.toFixed(2)} €</span>
-              </div>
-              <div className="flex justify-between text-neutral-400">
-                <span>Frais de licence</span>
-                <span className="text-emerald-500">GRATUIT</span>
-              </div>
-              <div className="flex justify-between text-white font-bold text-base pt-2 border-t border-neutral-800">
-                <span>Total</span>
-                <span className="text-void-accent">{totalPrice.toFixed(2)} €</span>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 text-[10px] text-neutral-500 font-mono">
-              <ShieldCheck size={16} className="text-emerald-500 shrink-0" />
-              <span>Livraison instantanée par e-mail après validation.</span>
-            </div>
-          </div>
-
+            <p className="mt-4 flex items-start gap-2 font-mono text-[10px] leading-relaxed text-neutral-600">
+              <ShieldCheck size={13} className="mt-0.5 shrink-0 text-emerald-600" aria-hidden="true" />
+              Livraison instantanée par email après validation.
+            </p>
+          </aside>
         </div>
       </div>
     </div>

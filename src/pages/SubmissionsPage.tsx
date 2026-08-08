@@ -1,12 +1,15 @@
 import React, { useEffect, useState } from 'react';
-import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, Timestamp } from 'firebase/firestore';
+import {
+  collection, query, orderBy, onSnapshot,
+  doc, updateDoc, deleteDoc, Timestamp,
+} from 'firebase/firestore';
 import { ref, deleteObject } from 'firebase/storage';
 import { db, storage } from '../firebase';
 import { useAuth } from '../context/AuthContext';
 import { useDocumentMeta } from '../hooks/useDocumentMeta';
 import {
   Inbox, Mail, Phone, ExternalLink, Check, Trash2,
-  Loader2, ShieldAlert, RotateCcw,
+  Loader2, ShieldAlert, RotateCcw, Link2,
 } from 'lucide-react';
 
 type SubmissionStatus = 'new' | 'done';
@@ -45,18 +48,15 @@ export const SubmissionsPage: React.FC = () => {
     }
 
     const q = query(collection(db, 'submissions'), orderBy('createdAt', 'desc'));
-
     const unsubscribe = onSnapshot(
       q,
       (snap) => {
-        setSubmissions(
-          snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Submission, 'id'>) }))
-        );
+        setSubmissions(snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Submission, 'id'>) })));
         setLoading(false);
       },
       (error) => {
         console.error('Erreur lors du chargement des candidatures :', error);
-        setLoadError("Impossible de charger les candidatures. Vérifie tes droits.");
+        setLoadError('Impossible de charger les candidatures. Vérifie tes droits.');
         setLoading(false);
       }
     );
@@ -66,10 +66,10 @@ export const SubmissionsPage: React.FC = () => {
 
   if (!canManage) {
     return (
-      <div className="min-h-[50vh] flex flex-col items-center justify-center text-center px-6">
-        <ShieldAlert className="text-void-accent mb-4" size={32} aria-hidden="true" />
-        <p className="font-mono text-sm text-neutral-400">
-          Accès réservé aux managers.
+      <div className="flex min-h-[50vh] flex-col items-center justify-center px-6 text-center">
+        <ShieldAlert className="text-void-accent" size={30} aria-hidden="true" />
+        <p className="mt-4 font-mono text-xs uppercase tracking-widest text-neutral-500">
+          Accès réservé aux managers
         </p>
       </div>
     );
@@ -92,10 +92,9 @@ export const SubmissionsPage: React.FC = () => {
     if (!window.confirm(`Supprimer définitivement la candidature de ${s.artistName} ?`)) return;
     setBusyId(s.id);
     try {
-      // On supprime d'abord le fichier : si on effaçait le document en
-      // premier et que la suppression Storage échouait, on perdrait le
-      // chemin du fichier, qui resterait orphelin dans le bucket à
-      // consommer du quota sans qu'on puisse le retrouver.
+      // Le fichier part en premier : supprimer le document d'abord ferait
+      // perdre le chemin, et le fichier resterait orphelin dans le bucket
+      // à consommer du quota sans qu'on puisse le retrouver.
       if (s.filePath) {
         try {
           await deleteObject(ref(storage, s.filePath));
@@ -126,45 +125,57 @@ export const SubmissionsPage: React.FC = () => {
   const newCount = submissions.filter((s) => s.status !== 'done').length;
 
   const tabClass = (value: typeof filter) =>
-    `px-4 py-2 rounded-lg text-[10px] font-mono font-bold uppercase tracking-wider transition-colors ${
+    `px-4 py-2 font-mono text-[10px] font-bold uppercase tracking-[0.15em] transition-colors ${
       filter === value
         ? 'bg-void-accent text-white'
-        : 'bg-neutral-900 text-neutral-400 border border-neutral-800 hover:text-white'
+        : 'border border-neutral-800 text-neutral-400 hover:border-neutral-600 hover:text-white'
     }`;
 
   return (
-    <div className="max-w-3xl mx-auto px-6 py-12 text-white">
-      <header className="mb-8">
-        <h1 className="text-3xl font-black uppercase tracking-tight flex items-center gap-3">
-          <Inbox className="text-void-accent" size={26} aria-hidden="true" />
+    <div className="mx-auto max-w-4xl px-6 py-16">
+      <header className="mb-8 border-b border-white/10 pb-8">
+        <p className="font-mono text-[10px] uppercase tracking-[0.4em] text-void-accent">
+          Boîte de réception
+        </p>
+        <h1 className="mt-3 flex items-center gap-4 text-4xl font-black uppercase leading-none tracking-tight text-white md:text-5xl">
           Candidatures
+          {newCount > 0 && (
+            <span className="flex h-8 min-w-8 items-center justify-center bg-void-accent px-2 font-mono text-sm">
+              {newCount}
+            </span>
+          )}
         </h1>
-        <p className="text-neutral-400 text-xs font-mono uppercase mt-1">
+        <p className="mt-4 font-mono text-[10px] uppercase tracking-wider text-neutral-500">
           {newCount} en attente · {submissions.length} au total
         </p>
+
+        <div className="mt-6 flex gap-2" role="tablist" aria-label="Filtrer les candidatures">
+          <button role="tab" aria-selected={filter === 'new'} onClick={() => setFilter('new')} className={tabClass('new')}>
+            En attente
+          </button>
+          <button role="tab" aria-selected={filter === 'done'} onClick={() => setFilter('done')} className={tabClass('done')}>
+            Traitées
+          </button>
+          <button role="tab" aria-selected={filter === 'all'} onClick={() => setFilter('all')} className={tabClass('all')}>
+            Toutes
+          </button>
+        </div>
       </header>
 
-      <div className="flex gap-2 mb-6" role="tablist" aria-label="Filtrer les candidatures">
-        <button role="tab" aria-selected={filter === 'new'} onClick={() => setFilter('new')} className={tabClass('new')}>
-          En attente
-        </button>
-        <button role="tab" aria-selected={filter === 'done'} onClick={() => setFilter('done')} className={tabClass('done')}>
-          Traitées
-        </button>
-        <button role="tab" aria-selected={filter === 'all'} onClick={() => setFilter('all')} className={tabClass('all')}>
-          Toutes
-        </button>
-      </div>
-
       {loading ? (
-        <div className="flex items-center gap-2 justify-center py-16 text-neutral-500 text-xs font-mono">
+        <div className="flex items-center justify-center gap-2 py-20 font-mono text-xs text-neutral-500">
           <Loader2 className="animate-spin" size={16} aria-hidden="true" /> Chargement…
         </div>
       ) : loadError ? (
-        <p role="alert" className="text-xs font-mono text-red-400">{loadError}</p>
+        <p role="alert" className="border border-red-900/50 bg-red-950/40 px-5 py-4 font-mono text-xs text-red-400">
+          {loadError}
+        </p>
       ) : visible.length === 0 ? (
-        <div className="text-center py-16 border border-dashed border-neutral-900 rounded-2xl">
-          <p className="text-xs font-mono text-neutral-500">Aucune candidature dans cette vue.</p>
+        <div className="border border-dashed border-neutral-900 py-20 text-center">
+          <Inbox size={26} className="mx-auto mb-4 text-neutral-800" aria-hidden="true" />
+          <p className="font-mono text-xs uppercase tracking-widest text-neutral-600">
+            Rien dans cette vue
+          </p>
         </div>
       ) : (
         <ul className="space-y-4">
@@ -175,36 +186,44 @@ export const SubmissionsPage: React.FC = () => {
             return (
               <li
                 key={s.id}
-                className={`bg-neutral-950 border rounded-2xl p-5 transition-colors ${
-                  isDone ? 'border-neutral-900 opacity-60' : 'border-neutral-800'
+                className={`relative border bg-neutral-950 p-6 transition-colors ${
+                  isDone ? 'border-neutral-900 opacity-55' : 'border-neutral-800'
                 }`}
               >
-                <div className="flex items-start justify-between gap-3 flex-wrap">
+                {/* Filet rouge sur les candidatures non traitées : dans une
+                    liste longue, on repère d'un regard ce qui reste à faire. */}
+                {!isDone && (
+                  <span className="absolute inset-y-0 left-0 w-0.5 bg-void-accent" aria-hidden="true" />
+                )}
+
+                <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <h2 className="text-lg font-black uppercase tracking-wide">{s.artistName}</h2>
-                    <p className="text-[10px] font-mono text-neutral-500 mt-0.5">
+                    <h2 className="text-2xl font-black uppercase leading-none tracking-tight text-white">
+                      {s.artistName}
+                    </h2>
+                    <p className="mt-2 font-mono text-[10px] uppercase tracking-wider text-neutral-600">
                       {formatDate(s.createdAt)}
                     </p>
                   </div>
                   {isDone && (
-                    <span className="text-[10px] font-mono font-bold uppercase px-2 py-1 rounded bg-emerald-950/60 text-emerald-400 border border-emerald-800/40">
+                    <span className="border border-emerald-800/40 bg-emerald-950/60 px-2.5 py-1 font-mono text-[10px] font-bold uppercase text-emerald-400">
                       Traitée
                     </span>
                   )}
                 </div>
 
-                <div className="flex flex-wrap gap-4 mt-3 text-xs font-mono">
-                  <a href={`mailto:${s.email}`} className="flex items-center gap-1.5 text-neutral-300 hover:text-void-accent transition-colors">
+                <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 font-mono text-xs">
+                  <a href={`mailto:${s.email}`} className="flex items-center gap-2 text-neutral-300 transition-colors hover:text-void-accent">
                     <Mail size={13} aria-hidden="true" /> {s.email}
                   </a>
                   {s.phone && (
-                    <a href={`tel:${s.phone}`} className="flex items-center gap-1.5 text-neutral-300 hover:text-void-accent transition-colors">
+                    <a href={`tel:${s.phone}`} className="flex items-center gap-2 text-neutral-300 transition-colors hover:text-void-accent">
                       <Phone size={13} aria-hidden="true" /> {s.phone}
                     </a>
                   )}
                 </div>
 
-                <p className="text-sm text-neutral-200 leading-relaxed whitespace-pre-wrap mt-4">
+                <p className="mt-5 border-l-2 border-void-accent/30 pl-5 text-sm font-light leading-relaxed whitespace-pre-wrap text-neutral-300">
                   {s.message}
                 </p>
 
@@ -213,32 +232,34 @@ export const SubmissionsPage: React.FC = () => {
                     href={s.linkUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 mt-4 text-xs font-mono text-void-accent hover:underline break-all"
+                    className="group mt-5 flex items-center justify-between border border-neutral-900 bg-black px-4 py-3 transition-colors hover:border-void-accent"
                   >
-                    <ExternalLink size={13} aria-hidden="true" /> {s.linkUrl}
+                    <span className="flex min-w-0 items-center gap-2 font-mono text-xs text-neutral-400 transition-colors group-hover:text-white">
+                      <Link2 size={13} className="shrink-0 text-void-accent" aria-hidden="true" />
+                      <span className="truncate">{s.linkUrl}</span>
+                    </span>
+                    <ExternalLink size={13} className="ml-3 shrink-0 text-neutral-700 group-hover:text-void-accent" aria-hidden="true" />
                   </a>
                 )}
 
                 {s.fileUrl && (
-                  <div className="mt-4">
-                    {/* preload="none" est important : ces fichiers peuvent
-                        peser jusqu'à 50 Mo. Sans cela, ouvrir la page
-                        déclencherait le téléchargement de TOUTES les démos
-                        affichées d'un coup — et ferait fondre le quota de
-                        bande passante Storage. */}
+                  <div className="mt-5">
+                    {/* preload="none" : ces fichiers pèsent jusqu'à 50 Mo.
+                        Sans cela, ouvrir la page téléchargerait toutes les
+                        démos affichées d'un coup. */}
                     {isVideo ? (
-                      <video src={s.fileUrl} controls preload="none" className="w-full rounded-lg border border-neutral-800 max-h-80" />
+                      <video src={s.fileUrl} controls preload="none" className="max-h-80 w-full border border-neutral-900 bg-black" />
                     ) : (
                       <audio src={s.fileUrl} controls preload="none" className="w-full" />
                     )}
                   </div>
                 )}
 
-                <div className="flex items-center gap-2 mt-5 pt-4 border-t border-neutral-900">
+                <div className="mt-6 flex items-center gap-2 border-t border-neutral-900 pt-5">
                   <button
                     onClick={() => toggleStatus(s)}
                     disabled={busyId === s.id}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-neutral-900 border border-neutral-800 hover:border-emerald-700 hover:text-emerald-400 text-neutral-300 text-[10px] font-mono font-bold uppercase transition-colors disabled:opacity-50"
+                    className="flex items-center gap-2 border border-neutral-800 px-4 py-2.5 font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-neutral-300 transition-colors hover:border-emerald-700 hover:text-emerald-400 disabled:opacity-50"
                   >
                     {isDone ? (
                       <><RotateCcw size={12} aria-hidden="true" /> Rouvrir</>
@@ -250,12 +271,14 @@ export const SubmissionsPage: React.FC = () => {
                   <button
                     onClick={() => remove(s)}
                     disabled={busyId === s.id}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-neutral-600 hover:text-red-500 text-[10px] font-mono font-bold uppercase transition-colors disabled:opacity-50"
+                    className="flex items-center gap-2 px-4 py-2.5 font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-neutral-700 transition-colors hover:text-red-500 disabled:opacity-50"
                   >
                     <Trash2 size={12} aria-hidden="true" /> Supprimer
                   </button>
 
-                  {busyId === s.id && <Loader2 className="animate-spin text-neutral-500" size={14} aria-hidden="true" />}
+                  {busyId === s.id && (
+                    <Loader2 className="animate-spin text-neutral-600" size={14} aria-hidden="true" />
+                  )}
                 </div>
               </li>
             );

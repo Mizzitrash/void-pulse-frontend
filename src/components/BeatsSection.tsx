@@ -1,24 +1,40 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
+import { useDocumentMeta } from '../hooks/useDocumentMeta';
 import { BEATS_DATA, type Beat, type BeatStatus } from '../data/beats';
-import { Play, Pause, Volume2, VolumeX, Disc, Lock, Clock } from 'lucide-react';
+import { Play, Pause, Volume2, VolumeX, Lock, Clock, X, ShoppingBag } from 'lucide-react';
 
 interface BeatsSectionProps {
   onOpenAuth: () => void;
 }
 
 export const BeatsSection: React.FC<BeatsSectionProps> = ({ onOpenAuth }) => {
+  useDocumentMeta({
+    title: 'Beats',
+    description: 'Catalogue de prods exclusives VØID PULSE, prêtes pour ton prochain projet.',
+  });
+
   const { addToCart } = useCart();
-  // Avant : `const { user } = useAuth()` — cette propriété n'existe pas
-  // dans AuthContext (qui expose `firebaseUser` et `profile`), donc
-  // `user` valait toujours `undefined` et `!user` était toujours vrai :
-  // même connecté, on était systématiquement renvoyé vers /auth.
   const { firebaseUser } = useAuth();
+
   const [currentBeat, setCurrentBeat] = useState<Beat | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
+  const [progress, setProgress] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Barre de progression : sans repère temporel, on ne sait pas si un
+  // extrait dure dix secondes ou deux minutes, ni où on en est.
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    const onTime = () => {
+      if (audio.duration) setProgress((audio.currentTime / audio.duration) * 100);
+    };
+    audio.addEventListener('timeupdate', onTime);
+    return () => audio.removeEventListener('timeupdate', onTime);
+  }, []);
 
   const handleAcquireBeat = (beat: Beat) => {
     if (!firebaseUser) {
@@ -41,12 +57,20 @@ export const BeatsSection: React.FC<BeatsSectionProps> = ({ onOpenAuth }) => {
       }
     } else {
       setCurrentBeat(beat);
+      setProgress(0);
       setIsPlaying(true);
       if (audioRef.current) {
         audioRef.current.src = beat.audioUrl;
         audioRef.current.play();
       }
     }
+  };
+
+  const stopPlayback = () => {
+    audioRef.current?.pause();
+    setIsPlaying(false);
+    setCurrentBeat(null);
+    setProgress(0);
   };
 
   const toggleMute = () => {
@@ -56,173 +80,220 @@ export const BeatsSection: React.FC<BeatsSectionProps> = ({ onOpenAuth }) => {
     }
   };
 
-  const renderStatusBadge = (status: BeatStatus) => {
-    switch (status) {
-      case 'coming_soon':
-        return (
-          <span className="text-[9px] font-mono font-bold tracking-widest text-amber-400 bg-amber-950/50 border border-amber-800/40 px-2 py-0.5 rounded uppercase flex items-center gap-1">
-            <Clock size={10} /> Sort Bientôt
-          </span>
-        );
-      case 'sold':
-        return (
-          <span className="text-[9px] font-mono font-bold tracking-widest text-red-500 bg-red-950/50 border border-red-800/40 px-2 py-0.5 rounded uppercase flex items-center gap-1">
-            <Lock size={10} /> Indisponible
-          </span>
-        );
-      default:
-        return null;
+  const statusBadge = (status: BeatStatus) => {
+    if (status === 'coming_soon') {
+      return (
+        <span className="flex items-center gap-1 border border-amber-800/40 bg-amber-950/50 px-2 py-0.5 font-mono text-[9px] font-bold uppercase tracking-widest text-amber-400">
+          <Clock size={9} aria-hidden="true" /> Bientôt
+        </span>
+      );
     }
+    if (status === 'sold') {
+      return (
+        <span className="flex items-center gap-1 border border-red-800/40 bg-red-950/50 px-2 py-0.5 font-mono text-[9px] font-bold uppercase tracking-widest text-red-500">
+          <Lock size={9} aria-hidden="true" /> Vendu
+        </span>
+      );
+    }
+    return null;
   };
 
+  const availableCount = BEATS_DATA.filter((b) => b.status === 'available').length;
+
   return (
-    <section id="beats" className="py-24 bg-black relative border-t border-neutral-900">
-      <audio ref={audioRef} onEnded={() => setIsPlaying(false)} />
+    <div className="mx-auto max-w-6xl px-6 py-16">
+      <audio ref={audioRef} onEnded={() => { setIsPlaying(false); setProgress(0); }} />
 
-      <div className="max-w-7xl mx-auto px-6">
-
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-16 gap-4">
-          <div>
-            <span className="text-[#A00303] text-xs font-bold tracking-[0.4em] uppercase">
-              Catalogue Prods
-            </span>
-            <h2 className="text-4xl md:text-6xl font-black tracking-tight text-white mt-2">
-              VØID BEATS
-            </h2>
-          </div>
-          <p className="text-neutral-400 text-xs tracking-widest uppercase max-w-xs font-mono">
-            Sélection de prods exclusives prêtes pour vos prochains projets.
+      <header className="mb-12 flex flex-col justify-between gap-6 border-b border-white/10 pb-8 md:flex-row md:items-end">
+        <div>
+          <p className="font-mono text-[10px] uppercase tracking-[0.4em] text-void-accent">
+            Catalogue prods
           </p>
+          <h1 className="mt-3 text-4xl font-black uppercase leading-none tracking-tight text-white md:text-6xl">
+            VØID Beats
+          </h1>
         </div>
+        <p className="max-w-xs font-mono text-[10px] uppercase leading-relaxed tracking-wider text-neutral-500">
+          {availableCount} prod{availableCount > 1 ? 's' : ''} disponible
+          {availableCount > 1 ? 's' : ''} · Licence incluse
+        </p>
+      </header>
 
-        <div className="space-y-4">
-          {BEATS_DATA.map((beat) => {
-            const isCurrent = currentBeat?.id === beat.id;
-            const isThisPlaying = isCurrent && isPlaying;
+      {/* Tracklist : chaque prod est une ligne, comme sur un projet. Les
+          métadonnées techniques (BPM, tonalité) sont alignées en colonne
+          pour qu'on puisse les comparer d'un regard vertical. */}
+      <ul className="divide-y divide-neutral-900 border-y border-neutral-900">
+        {BEATS_DATA.map((beat, index) => {
+          const isCurrent = currentBeat?.id === beat.id;
+          const isThisPlaying = isCurrent && isPlaying;
+          const isSold = beat.status === 'sold';
 
-            return (
-              <div
-                key={beat.id}
-                className={`flex flex-col md:flex-row items-center justify-between p-4 md:p-6 rounded-xl border transition-all duration-300 gap-4 ${
-                  beat.status === 'sold'
-                    ? 'bg-neutral-950/30 border-neutral-900/60 opacity-60 grayscale-[30%]'
-                    : beat.status === 'coming_soon'
-                    ? 'bg-neutral-950/80 border-amber-900/30'
-                    : isCurrent
-                    ? 'bg-neutral-900/90 border-[#A00303] shadow-[0_0_15px_rgba(160,3,3,0.2)]'
-                    : 'bg-neutral-950/60 border-neutral-900 hover:border-neutral-800'
-                }`}
-              >
-                <div className="flex items-center gap-5 w-full md:w-auto">
+          return (
+            <li
+              key={beat.id}
+              className={`group relative transition-colors ${
+                isCurrent ? 'bg-void-accent/5' : 'hover:bg-neutral-950'
+              } ${isSold ? 'opacity-50' : ''}`}
+            >
+              {/* Filet rouge sur la ligne en cours de lecture. */}
+              {isCurrent && (
+                <span className="absolute inset-y-0 left-0 w-0.5 bg-void-accent" aria-hidden="true" />
+              )}
+
+              <div className="flex flex-col gap-4 px-4 py-5 md:flex-row md:items-center md:gap-6 md:px-6">
+
+                <span className="hidden w-8 shrink-0 font-mono text-xs text-neutral-700 md:block">
+                  {String(index + 1).padStart(2, '0')}
+                </span>
+
+                <div className="flex flex-1 items-center gap-4">
                   <button
                     onClick={() => togglePlay(beat)}
-                    disabled={beat.status === 'sold'}
-                    className={`w-14 h-14 rounded-full flex items-center justify-center shrink-0 transition-all duration-300 ${
-                      beat.status === 'sold'
-                        ? 'bg-neutral-800 text-neutral-600 cursor-not-allowed'
+                    disabled={isSold}
+                    className={`flex h-12 w-12 shrink-0 items-center justify-center transition-all ${
+                      isSold
+                        ? 'cursor-not-allowed bg-neutral-900 text-neutral-700'
                         : isThisPlaying
-                        ? 'bg-[#A00303] text-white shadow-[0_0_20px_rgba(160,3,3,0.6)]'
-                        : 'bg-white/10 text-white hover:bg-white hover:text-black'
+                        ? 'bg-void-accent text-white'
+                        : 'border border-neutral-800 text-white hover:border-void-accent hover:bg-void-accent'
                     }`}
+                    aria-label={isThisPlaying ? `Mettre ${beat.title} en pause` : `Écouter ${beat.title}`}
                   >
-                    {beat.status === 'sold' ? (
-                      <Lock size={18} />
+                    {isSold ? (
+                      <Lock size={16} aria-hidden="true" />
                     ) : isThisPlaying ? (
-                      <Pause size={20} />
+                      <Pause size={17} aria-hidden="true" />
                     ) : (
-                      <Play size={20} className="ml-1" />
+                      <Play size={17} className="ml-0.5" aria-hidden="true" />
                     )}
                   </button>
 
                   <img
                     src={beat.coverUrl}
-                    alt={beat.title}
-                    className="w-14 h-14 rounded-lg object-cover border border-white/10 shrink-0"
+                    alt=""
+                    loading="lazy"
+                    className="h-12 w-12 shrink-0 border border-white/10 object-cover"
                   />
 
-                  <div>
-                    <div className="flex items-center gap-2.5">
-                      <h3 className="font-black text-lg tracking-wider text-white uppercase">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h2 className="truncate text-lg font-black uppercase leading-none tracking-tight text-white">
                         {beat.title}
-                      </h3>
-                      {renderStatusBadge(beat.status)}
+                      </h2>
+                      {statusBadge(beat.status)}
                     </div>
-                    <p className="text-xs text-neutral-400 font-mono tracking-widest uppercase mt-0.5">
-                      PROD. BY <span className="text-white font-bold">{beat.producer}</span>
+                    <p className="mt-1 font-mono text-[10px] uppercase tracking-widest text-neutral-500">
+                      Prod. <span className="text-neutral-300">{beat.producer}</span>
                     </p>
                   </div>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-3 w-full md:w-auto justify-start md:justify-center">
-                  <span className="text-[10px] font-mono bg-neutral-900 text-neutral-300 px-3 py-1 rounded border border-white/5">
-                    {beat.bpm} BPM
-                  </span>
-                  <span className="text-[10px] font-mono bg-neutral-900 text-neutral-300 px-3 py-1 rounded border border-white/5">
-                    {beat.key}
-                  </span>
-                  {beat.tags.map((tag) => (
-                    <span key={tag} className="text-[10px] font-mono bg-[#A00303]/10 text-[#A00303] px-2.5 py-1 rounded border border-[#A00303]/20">
-                      #{tag}
-                    </span>
-                  ))}
+                <div className="flex shrink-0 items-center gap-5 font-mono text-[10px] uppercase tracking-wider text-neutral-500">
+                  <span className="w-16">{beat.bpm} <span className="text-neutral-700">BPM</span></span>
+                  <span className="hidden w-16 sm:block">{beat.key}</span>
+                  <div className="hidden gap-1.5 lg:flex">
+                    {beat.tags.slice(0, 2).map((tag) => (
+                      <span key={tag} className="border border-void-accent/20 bg-void-accent/10 px-2 py-0.5 text-void-accent">
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
                 </div>
 
-                <div className="flex items-center gap-4 w-full md:w-auto justify-between md:justify-end border-t md:border-t-0 border-neutral-800 pt-3 md:pt-0">
-                  <span className={`font-mono text-sm font-bold ${beat.status === 'available' ? 'text-white' : 'text-neutral-500 line-through'}`}>
+                <div className="flex shrink-0 items-center justify-between gap-5 md:justify-end">
+                  <span className={`font-mono text-sm font-bold ${isSold ? 'text-neutral-600 line-through' : 'text-white'}`}>
                     {beat.price}
                   </span>
 
                   {beat.status === 'available' && (
                     <button
                       onClick={() => handleAcquireBeat(beat)}
-                      className="px-5 py-2.5 text-xs font-bold tracking-widest uppercase bg-white text-black hover:bg-[#A00303] hover:text-white transition-all duration-300 shadow-md hover:shadow-[0_0_15px_rgba(160,3,3,0.5)]"
+                      className="border border-white/20 px-5 py-2.5 font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-white transition-all hover:border-void-accent hover:bg-void-accent"
                     >
-                      ACQUÉRIR
+                      Acquérir
                     </button>
                   )}
-
                   {beat.status === 'coming_soon' && (
-                    <button disabled className="px-5 py-2.5 text-xs font-bold tracking-widest uppercase bg-amber-950/40 text-amber-400 border border-amber-800/50 cursor-not-allowed">
-                      PROCHAINEMENT
-                    </button>
+                    <span className="border border-amber-900/40 px-5 py-2.5 font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-amber-500/70">
+                      Prochainement
+                    </span>
                   )}
-
-                  {beat.status === 'sold' && (
-                    <button disabled className="px-5 py-2.5 text-xs font-bold tracking-widest uppercase bg-neutral-900 text-neutral-600 border border-neutral-800 cursor-not-allowed">
-                      VENDU
-                    </button>
+                  {isSold && (
+                    <span className="border border-neutral-900 px-5 py-2.5 font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-700">
+                      Indisponible
+                    </span>
                   )}
                 </div>
               </div>
-            );
-          })}
-        </div>
+            </li>
+          );
+        })}
+      </ul>
 
-        {currentBeat && (
-          <div className="fixed bottom-0 left-0 w-full bg-black/95 border-t border-neutral-800 p-4 z-40 backdrop-blur-lg flex items-center justify-between px-6 animate-slideUp">
-            <div className="flex items-center gap-4">
-              <Disc className={`text-[#A00303] ${isPlaying ? 'animate-spin' : ''}`} size={24} />
-              <div>
-                <p className="text-xs font-bold tracking-wider text-white uppercase">{currentBeat.title}</p>
-                <p className="text-[10px] font-mono text-neutral-400">{currentBeat.producer}</p>
+      {/* ─────────── LECTEUR ─────────── */}
+      {currentBeat && (
+        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-neutral-800 bg-black/95 backdrop-blur-lg">
+          <div
+            className="h-0.5 bg-void-accent transition-[width] duration-300"
+            style={{ width: `${progress}%` }}
+            role="progressbar"
+            aria-valuenow={Math.round(progress)}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label="Progression de la lecture"
+          />
+
+          <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-3.5">
+            <div className="flex min-w-0 items-center gap-4">
+              <img src={currentBeat.coverUrl} alt="" className="h-11 w-11 shrink-0 border border-white/10 object-cover" />
+              <div className="min-w-0">
+                <p className="truncate text-sm font-black uppercase tracking-tight text-white">
+                  {currentBeat.title}
+                </p>
+                <p className="font-mono text-[10px] uppercase tracking-widest text-neutral-500">
+                  {currentBeat.producer}
+                </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-4">
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                onClick={() => handleAcquireBeat(currentBeat)}
+                className="mr-2 hidden items-center gap-2 border border-void-accent px-4 py-2 font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-void-accent transition-all hover:bg-void-accent hover:text-white sm:flex"
+              >
+                <ShoppingBag size={13} aria-hidden="true" /> {currentBeat.price}
+              </button>
+
               <button
                 onClick={() => togglePlay(currentBeat)}
-                className="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center hover:bg-[#A00303] hover:text-white transition-all"
+                className="flex h-10 w-10 items-center justify-center bg-white text-black transition-colors hover:bg-void-accent hover:text-white"
+                aria-label={isPlaying ? 'Pause' : 'Lecture'}
               >
-                {isPlaying ? <Pause size={16} /> : <Play size={16} className="ml-0.5" />}
+                {isPlaying ? <Pause size={16} aria-hidden="true" /> : <Play size={16} className="ml-0.5" aria-hidden="true" />}
               </button>
-              <button onClick={toggleMute} className="text-neutral-400 hover:text-white">
-                {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
+
+              <button
+                onClick={toggleMute}
+                className="p-2 text-neutral-400 transition-colors hover:text-white"
+                aria-label={isMuted ? 'Réactiver le son' : 'Couper le son'}
+              >
+                {isMuted ? <VolumeX size={18} aria-hidden="true" /> : <Volume2 size={18} aria-hidden="true" />}
+              </button>
+
+              {/* Fermeture du lecteur : il n'existait aucun moyen de s'en
+                  débarrasser une fois ouvert, il masquait le bas de page
+                  jusqu'au changement de page. */}
+              <button
+                onClick={stopPlayback}
+                className="p-2 text-neutral-500 transition-colors hover:text-white"
+                aria-label="Fermer le lecteur"
+              >
+                <X size={18} aria-hidden="true" />
               </button>
             </div>
           </div>
-        )}
-
-      </div>
-    </section>
+        </div>
+      )}
+    </div>
   );
 };

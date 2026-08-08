@@ -20,7 +20,7 @@ export const BEATS_DATA: Beat[] = [
     producer: 'VØID PULSE ft. Kayes & N2cow',
     bpm: 140,
     key: 'C Minor',
-    tags: ['DARK TRAP', 'HEAVY 808', 'INDUSTRIAL'],
+    tags: ['OLD SCHOOL', ' HIP-HOP'],
     audioUrl: '/hollow-vb.mp3',
     coverUrl: '/cover1.jpg',
     price: '19.99 €',

@@ -1,43 +1,49 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useDocumentMeta } from '../hooks/useDocumentMeta';
 import { createPost, subscribeToPosts, uploadPostImage } from '../services/postsService';
 import { type NewsPost } from '../types/post';
-import { Send, MessageSquare, ArrowLeft, ShieldCheck, User, Image as ImageIcon, X } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Send, MessageSquare, ShieldCheck, User, Image as ImageIcon, X, Loader2 } from 'lucide-react';
+
+const MAX_CHARS = 280;
+const CATEGORIES: NewsPost['category'][] = ['ANNONCE', 'RELEASE', 'EVENT'];
 
 export const CommunityManagerPage: React.FC = () => {
-  // Avant : `const { user } = useAuth()` — AuthContext n'expose pas `user`,
-  // seulement `profile` et `firebaseUser`. Résultat : l'avatar ne
-  // s'affichait jamais et l'auteur retombait toujours sur le texte
-  // générique "COMMUNITY MANAGER" au lieu du vrai pseudo.
+  useDocumentMeta({ title: 'Community dashboard' });
+
   const { profile } = useAuth();
   const [posts, setPosts] = useState<NewsPost[]>([]);
   const [content, setContent] = useState('');
+  const [category, setCategory] = useState<NewsPost['category']>('ANNONCE');
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const MAX_CHARS = 280;
-
   useEffect(() => {
-    const unsubscribe = subscribeToPosts((fetchedPosts) => {
-      setPosts(fetchedPosts);
-    });
-
+    const unsubscribe = subscribeToPosts(setPosts);
     return () => unsubscribe();
   }, []);
 
+  // Libère l'URL d'aperçu au démontage : createObjectURL réserve de la
+  // mémoire tant qu'on ne la révoque pas explicitement.
+  useEffect(() => {
+    return () => {
+      if (imagePreview) URL.revokeObjectURL(imagePreview);
+    };
+  }, [imagePreview]);
+
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        alert("L'image est trop lourde (max 5 Mo).");
-        return;
-      }
-      setImageFile(file);
-      setImagePreview(URL.createObjectURL(file));
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      setError("L'image est trop lourde (5 Mo maximum).");
+      return;
     }
+    setError(null);
+    setImageFile(file);
+    setImagePreview(URL.createObjectURL(file));
   };
 
   const handleRemoveImage = () => {
@@ -51,27 +57,26 @@ export const CommunityManagerPage: React.FC = () => {
     e.preventDefault();
     if (!content.trim() || content.length > MAX_CHARS || isSubmitting) return;
 
+    setIsSubmitting(true);
+    setError(null);
     try {
-      setIsSubmitting(true);
       let uploadedImageUrl = '';
-
-      if (imageFile) {
-        uploadedImageUrl = await uploadPostImage(imageFile);
-      }
+      if (imageFile) uploadedImageUrl = await uploadPostImage(imageFile);
 
       await createPost({
         title: '',
         content: content.trim(),
-        author: profile?.username || 'COMMUNITY MANAGER',
-        category: 'ANNONCE',
+        author: profile?.username || 'VØID PULSE',
+        category,
         imageUrl: uploadedImageUrl || undefined,
       });
 
       setContent('');
+      setCategory('ANNONCE');
       handleRemoveImage();
-    } catch (error) {
-      console.error("Erreur de publication :", error);
-      alert("Une erreur est survenue lors de la publication.");
+    } catch (err) {
+      console.error('Erreur de publication :', err);
+      setError('La publication a échoué. Vérifie tes droits et réessaie.');
     } finally {
       setIsSubmitting(false);
     }
@@ -80,149 +85,172 @@ export const CommunityManagerPage: React.FC = () => {
   const formatDate = (dateValue: unknown) => {
     if (!dateValue) return "À l'instant";
     try {
-      if (typeof dateValue === 'object' && dateValue !== null && 'toDate' in dateValue) {
-        return (dateValue as { toDate: () => Date }).toDate().toLocaleDateString('fr-FR', {
-          day: '2-digit',
-          month: '2-digit',
-          hour: '2-digit',
-          minute: '2-digit',
-        });
-      }
-      return new Date(dateValue as string | number | Date).toLocaleDateString('fr-FR', {
-        day: '2-digit',
-        month: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
+      const date =
+        typeof dateValue === 'object' && dateValue !== null && 'toDate' in dateValue
+          ? (dateValue as { toDate: () => Date }).toDate()
+          : new Date(dateValue as string | number | Date);
+      return date.toLocaleDateString('fr-FR', {
+        day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
       });
     } catch {
       return "À l'instant";
     }
   };
 
+  const remaining = MAX_CHARS - content.length;
+
   return (
-    <div className="min-h-screen bg-black text-white pt-28 pb-16 px-6 max-w-3xl mx-auto">
-      <Link
-        to="/"
-        className="inline-flex items-center gap-2 text-xs font-mono text-neutral-400 hover:text-white transition-colors mb-8"
-      >
-        <ArrowLeft size={16} /> RETOUR AU SITE
-      </Link>
+    <div className="mx-auto max-w-3xl px-6 py-16">
+      <header className="mb-10 border-b border-white/10 pb-8">
+        <p className="font-mono text-[10px] uppercase tracking-[0.4em] text-void-accent">
+          Espace éditorial
+        </p>
+        <h1 className="mt-3 flex items-center gap-3 text-4xl font-black uppercase leading-none tracking-tight text-white md:text-5xl">
+          Community
+          <ShieldCheck className="text-void-accent" size={26} aria-hidden="true" />
+        </h1>
+        <p className="mt-4 font-mono text-[10px] uppercase tracking-wider text-neutral-500">
+          Publication des actualités du label
+        </p>
+      </header>
 
-      <div className="flex items-center justify-between mb-8 pb-4 border-b border-neutral-900">
-        <div>
-          <h1 className="text-2xl font-black uppercase tracking-tight flex items-center gap-3">
-            COMMUNITY DASHBOARD <ShieldCheck className="text-[#A00303]" size={22} />
-          </h1>
-          <p className="text-xs font-mono text-neutral-400 mt-1">
-            Espace de publication des actualités VØID PULSE.
-          </p>
-        </div>
-      </div>
-
-      <div className="bg-neutral-950 border border-neutral-900 rounded-2xl p-6 shadow-2xl mb-10">
+      {/* ─────────── COMPOSITION ─────────── */}
+      <form onSubmit={handlePublish} className="border border-neutral-800 bg-neutral-950 p-6">
         <div className="flex gap-4">
-          <div className="w-10 h-10 rounded-full overflow-hidden bg-neutral-900 border border-neutral-800 shrink-0 flex items-center justify-center">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-void-accent/30 bg-void-accent/10">
             {profile?.avatarUrl ? (
-              <img src={profile.avatarUrl} alt={profile.username || 'Avatar'} className="w-full h-full object-cover" />
+              <img src={profile.avatarUrl} alt="" className="h-full w-full object-cover" />
             ) : (
-              <User size={20} className="text-neutral-500" />
+              <User size={18} className="text-void-accent" aria-hidden="true" />
             )}
           </div>
 
-          <form onSubmit={handlePublish} className="flex-1 space-y-4">
+          <div className="min-w-0 flex-1 space-y-4">
             <textarea
               value={content}
               onChange={(e) => setContent(e.target.value)}
               placeholder="Quoi de neuf dans le VØID ?"
               rows={4}
               maxLength={MAX_CHARS}
-              className="w-full bg-black border border-neutral-800 rounded-xl p-4 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-[#A00303] transition-all resize-none font-sans"
+              className="w-full resize-none border border-neutral-800 bg-black p-4 text-sm leading-relaxed text-white placeholder-neutral-700 outline-none transition-colors focus:border-void-accent"
             />
 
+            <div className="flex flex-wrap gap-2">
+              {CATEGORIES.map((cat) => (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => setCategory(cat)}
+                  aria-pressed={category === cat}
+                  className={`px-3 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.15em] transition-colors ${
+                    category === cat
+                      ? 'bg-void-accent text-white'
+                      : 'border border-neutral-800 text-neutral-500 hover:border-neutral-600 hover:text-white'
+                  }`}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+
             {imagePreview && (
-              <div className="relative rounded-xl overflow-hidden border border-neutral-800 max-h-60 group">
-                <img src={imagePreview} alt="Aperçu" className="w-full h-full object-cover" />
+              <div className="relative max-h-64 overflow-hidden border border-neutral-800">
+                <img src={imagePreview} alt="Aperçu" className="h-full w-full object-cover" />
                 <button
                   type="button"
                   onClick={handleRemoveImage}
-                  className="absolute top-2 right-2 bg-black/80 hover:bg-red-600 text-white p-1.5 rounded-full transition-colors cursor-pointer"
-                  title="Retirer l'image"
+                  className="absolute right-2 top-2 border border-neutral-700 bg-black/80 p-2 text-white transition-colors hover:bg-red-600"
+                  aria-label="Retirer l'image"
                 >
-                  <X size={16} />
+                  <X size={14} aria-hidden="true" />
                 </button>
               </div>
             )}
 
-            <div className="flex justify-between items-center pt-2">
+            {error && <p role="alert" className="font-mono text-xs text-red-400">{error}</p>}
+
+            <div className="flex flex-wrap items-center justify-between gap-4 border-t border-neutral-900 pt-4">
               <div className="flex items-center gap-4">
                 <input
-                  type="file"
-                  ref={fileInputRef}
-                  onChange={handleImageSelect}
-                  accept="image/png, image/jpeg, image/webp, image/gif"
-                  className="hidden"
+                  type="file" ref={fileInputRef} onChange={handleImageSelect}
+                  accept="image/png, image/jpeg, image/webp, image/gif" className="sr-only"
+                  id="cm-image"
                 />
-
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="text-neutral-400 hover:text-white transition-colors flex items-center gap-1.5 text-xs font-mono cursor-pointer"
+                <label
+                  htmlFor="cm-image"
+                  className="flex cursor-pointer items-center gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-neutral-400 transition-colors hover:text-white"
                 >
-                  <ImageIcon size={18} className="text-[#A00303]" />
-                  <span>{imageFile ? "Changer l'image" : "Ajouter une image"}</span>
-                </button>
+                  <ImageIcon size={15} className="text-void-accent" aria-hidden="true" />
+                  {imageFile ? "Changer l'image" : 'Ajouter une image'}
+                </label>
 
-                <span className={`text-xs font-mono ${content.length > MAX_CHARS - 20 ? 'text-red-500 font-bold' : 'text-neutral-500'}`}>
-                  {content.length} / {MAX_CHARS}
+                <span className={`font-mono text-[10px] ${remaining < 20 ? 'font-bold text-void-accent' : 'text-neutral-600'}`}>
+                  {remaining}
                 </span>
               </div>
 
               <button
                 type="submit"
                 disabled={!content.trim() || content.length > MAX_CHARS || isSubmitting}
-                className="flex items-center gap-2 bg-[#A00303] hover:bg-red-700 disabled:opacity-40 text-white font-mono text-xs font-bold px-6 py-2.5 rounded-full transition-all shadow-lg cursor-pointer disabled:cursor-not-allowed"
+                className="flex items-center gap-2 border border-void-accent bg-void-accent px-6 py-2.5 font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-white transition-all hover:bg-transparent hover:text-void-accent disabled:cursor-not-allowed disabled:opacity-40"
               >
-                <Send size={14} /> {isSubmitting ? 'ENVOI...' : 'PUBLIER'}
+                {isSubmitting ? (
+                  <Loader2 size={13} className="animate-spin" aria-hidden="true" />
+                ) : (
+                  <Send size={13} aria-hidden="true" />
+                )}
+                Publier
               </button>
             </div>
-          </form>
+          </div>
         </div>
-      </div>
+      </form>
 
-      <div className="space-y-4">
-        <h2 className="text-xs font-mono font-bold uppercase tracking-wider text-neutral-400 flex items-center gap-2">
-          <MessageSquare size={14} className="text-[#A00303]" /> POSTS PUBLIÉS ({posts.length})
+      {/* ─────────── PUBLIÉS ─────────── */}
+      <section className="mt-14">
+        <h2 className="flex items-center gap-3 font-mono text-[10px] font-bold uppercase tracking-[0.3em] text-neutral-400">
+          <MessageSquare size={13} className="text-void-accent" aria-hidden="true" />
+          Publiés
+          <span className="h-px flex-1 bg-white/10" />
+          <span className="shrink-0 text-neutral-600">{posts.length}</span>
         </h2>
 
         {posts.length === 0 ? (
-          <p className="text-xs font-mono text-neutral-600 text-center py-8">Aucun post publié pour le moment.</p>
+          <p className="mt-6 border border-dashed border-neutral-900 py-16 text-center font-mono text-xs text-neutral-600">
+            Aucun post publié pour le moment.
+          </p>
         ) : (
-          posts.map((post) => (
-            <div key={post.id} className="bg-neutral-950 border border-neutral-900 rounded-xl p-5 flex gap-4 items-start justify-between">
-              <div className="flex gap-3 flex-1">
-                <div className="w-8 h-8 rounded-full overflow-hidden bg-neutral-900 border border-neutral-800 shrink-0 flex items-center justify-center">
-                  <User size={16} className="text-neutral-500" />
-                </div>
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-mono font-bold text-white">{post.author}</span>
-                    <span className="text-[10px] font-mono text-neutral-500">
-                      • {formatDate(post.createdAt)}
+          <ul className="mt-6 space-y-3">
+            {posts.map((post) => (
+              <li key={post.id} className="border border-neutral-900 bg-neutral-950 p-5">
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-xs font-bold uppercase text-neutral-200">
+                    {post.author}
+                  </span>
+                  {post.category && (
+                    <span className="border border-void-accent/40 bg-void-accent/15 px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase text-void-accent">
+                      {post.category}
                     </span>
-                  </div>
-                  <p className="text-sm text-neutral-300 mt-2 whitespace-pre-wrap leading-relaxed">{post.content}</p>
-
-                  {post.imageUrl && (
-                    <div className="mt-3 rounded-lg overflow-hidden border border-neutral-900 max-h-48">
-                      <img src={post.imageUrl} alt="Contenu du post" className="w-full h-full object-cover" />
-                    </div>
                   )}
+                  <span className="font-mono text-[10px] text-neutral-600">
+                    · {formatDate(post.createdAt)}
+                  </span>
                 </div>
-              </div>
-            </div>
-          ))
+
+                <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-neutral-300">
+                  {post.content}
+                </p>
+
+                {post.imageUrl && (
+                  <div className="mt-4 max-h-48 overflow-hidden border border-neutral-900">
+                    <img src={post.imageUrl} alt="" loading="lazy" className="h-full w-full object-cover" />
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
         )}
-      </div>
+      </section>
     </div>
   );
 };

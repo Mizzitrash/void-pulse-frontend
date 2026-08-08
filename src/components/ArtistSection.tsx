@@ -1,121 +1,116 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useNavigate } from 'react-router-dom';
+import { motion, useReducedMotion } from 'framer-motion';
 import { ARTISTS_DATA } from '../data/artists';
-import { ChevronLeft, ChevronRight, ExternalLink } from 'lucide-react';
+import { ArrowUpRight } from 'lucide-react';
 
 export const ArtistSection: React.FC = () => {
   const navigate = useNavigate();
-  const [currentIndex, setCurrentIndex] = useState(0);
+  const reduceMotion = useReducedMotion();
 
-  const prevArtist = () => {
-    setCurrentIndex((prev) => (prev === 0 ? ARTISTS_DATA.length - 1 : prev - 1));
-  };
-
-  const nextArtist = () => {
-    setCurrentIndex((prev) => (prev === ARTISTS_DATA.length - 1 ? 0 : prev + 1));
-  };
-
-  const activeArtist = ARTISTS_DATA[currentIndex];
-
-  const goToArtistPage = () => {
-    if (activeArtist?.id) {
-      navigate(`/artists/${activeArtist.id}`);
-    }
+  const fadeUp = {
+    hidden: { opacity: 0, y: reduceMotion ? 0 : 20 },
+    visible: { opacity: 1, y: 0 },
   };
 
   return (
-    <section id="artists" className="py-24 bg-black relative border-t border-void-border">
-      <div className="max-w-7xl mx-auto px-6">
-        
-        {/* HEADER SECTION */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-16 gap-4">
-          <div>
-            <span className="text-void-accent text-xs font-bold tracking-[0.4em] uppercase">
-              Roster
-            </span>
-            <h2 className="text-4xl md:text-6xl font-black tracking-tight text-white mt-2">
-              NOS ARTISTES
-            </h2>
-          </div>
-          <p className="text-neutral-400 text-xs tracking-widest uppercase max-w-xs">
-            Les voix et visionnaires qui façonnent la signature sonore VØID PULSE.
+    <section className="mx-auto max-w-6xl px-6 py-24">
+      <div className="mb-12 flex flex-col justify-between gap-6 md:flex-row md:items-end">
+        <div>
+          <p className="font-mono text-[10px] uppercase tracking-[0.4em] text-void-accent">
+            Roster
           </p>
+          <h2 className="mt-3 text-4xl font-black uppercase leading-none tracking-tight text-white md:text-5xl">
+            Nos artistes
+          </h2>
         </div>
-
-        {/* ARTIST CAROUSEL DISPLAY */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center bg-neutral-950 border border-neutral-900 rounded-2xl overflow-hidden p-6 md:p-10">
-          
-          {/* IMAGE (CLIQUABLE) */}
-          <div 
-            onClick={goToArtistPage}
-            className="lg:col-span-7 relative aspect-square md:aspect-video lg:aspect-square overflow-hidden rounded-xl border border-white/10 group cursor-pointer"
-          >
-            <img 
-              src={activeArtist.image} 
-              alt={activeArtist.name} 
-              className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105 filter grayscale contrast-125 group-hover:grayscale-0"
-            />
-            <div className="absolute inset-0 bg-linear-to-t from-black via-transparent to-transparent opacity-80" />
-            
-            <div className="absolute bottom-6 left-6 right-6 flex justify-between items-end">
-              <span className="text-xs font-mono tracking-widest text-void-accent bg-black/80 px-3 py-1 rounded border border-void-accent/30">
-                {activeArtist.genre}
-              </span>
-              <span className="text-[10px] font-mono tracking-widest text-white/70 bg-black/60 px-2.5 py-1 rounded border border-white/10 group-hover:text-white group-hover:border-void-accent transition-colors">
-                VOIR PROFIL →
-              </span>
-            </div>
-          </div>
-
-          {/* DETAILS */}
-          <div className="lg:col-span-5 flex flex-col justify-between h-full space-y-6">
-            <div>
-              <span className="text-xs font-mono text-neutral-500 tracking-widest">
-                0{currentIndex + 1} / 0{ARTISTS_DATA.length}
-              </span>
-              <h3 
-                onClick={goToArtistPage}
-                className="text-4xl md:text-5xl font-black tracking-tight text-white mt-2 uppercase cursor-pointer hover:text-void-accent transition-colors"
-              >
-                {activeArtist.name}
-              </h3>
-              <p className="text-neutral-400 text-sm leading-relaxed mt-4 font-light">
-                {activeArtist.bio}
-              </p>
-            </div>
-
-            <div className="pt-6 border-t border-neutral-900 flex items-center justify-between">
-              <button 
-                onClick={goToArtistPage}
-                className="flex items-center gap-2 text-xs font-bold tracking-widest uppercase text-white hover:text-void-accent transition-colors cursor-pointer"
-              >
-                VOIR LE PROFIL <ExternalLink size={14} />
-              </button>
-
-              {/* NAVIGATION BUTTONS */}
-              <div className="flex gap-2">
-                <button 
-                  onClick={prevArtist}
-                  className="w-12 h-12 border border-neutral-800 rounded-full flex items-center justify-center hover:bg-white hover:text-black transition-all cursor-pointer"
-                  aria-label="Artiste précédent"
-                >
-                  <ChevronLeft size={20} />
-                </button>
-                <button 
-                  onClick={nextArtist}
-                  className="w-12 h-12 border border-neutral-800 rounded-full flex items-center justify-center hover:bg-white hover:text-black transition-all cursor-pointer"
-                  aria-label="Artiste suivant"
-                >
-                  <ChevronRight size={20} />
-                </button>
-              </div>
-            </div>
-
-          </div>
-
-        </div>
-
+        <p className="max-w-xs text-sm font-light leading-relaxed text-neutral-400">
+          Les voix et les visionnaires qui façonnent la signature sonore
+          VØID PULSE.
+        </p>
       </div>
+
+      {/* Grille plutôt que carrousel : un carrousel n'affichait qu'un
+          artiste à la fois, ce qui obligeait à cliquer sept fois pour voir
+          le roster complet — l'inverse de ce qu'une page de label doit
+          faire. Le premier artiste occupe deux colonnes pour donner un
+          rythme éditorial au lieu d'un damier régulier. */}
+      <motion.ul
+        initial="hidden"
+        whileInView="visible"
+        viewport={{ once: true, margin: '-80px' }}
+        transition={{ staggerChildren: reduceMotion ? 0 : 0.08 }}
+        className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
+      >
+        {ARTISTS_DATA.map((artist, index) => {
+          const isFeature = index === 0;
+
+          return (
+            <motion.li
+              key={artist.id}
+              variants={fadeUp}
+              transition={{ duration: 0.5, ease: 'easeOut' }}
+              className={isFeature ? 'sm:col-span-2' : ''}
+            >
+              <button
+                onClick={() => navigate(`/artists/${artist.id}`)}
+                className="group relative block w-full overflow-hidden border border-neutral-900 bg-neutral-950 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-void-accent"
+                aria-label={`Voir le profil de ${artist.name}`}
+              >
+                <div className={`relative w-full overflow-hidden bg-black ${isFeature ? 'aspect-[16/10]' : 'aspect-[4/5]'}`}>
+                  <img
+                    src={artist.image}
+                    alt={artist.name}
+                    loading={index < 3 ? 'eager' : 'lazy'}
+                    className="h-full w-full object-cover grayscale contrast-125 transition-all duration-700 group-hover:scale-105 group-hover:grayscale-0"
+                  />
+
+                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black via-black/30 to-transparent" />
+
+                  {/* Filet rouge qui se déploie au survol : signale que la
+                      carte est cliquable sans ajouter de bouton. */}
+                  <div className="pointer-events-none absolute bottom-0 left-0 h-0.5 w-0 bg-void-accent transition-all duration-500 group-hover:w-full" />
+
+                  <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-4 p-5 md:p-6">
+                    <div className="min-w-0">
+                      <span className="font-mono text-[9px] uppercase tracking-[0.25em] text-void-accent">
+                        {artist.genre}
+                      </span>
+                      <h3 className={`mt-1.5 font-black uppercase leading-none tracking-tight text-white ${isFeature ? 'text-4xl md:text-6xl' : 'text-2xl md:text-3xl'}`}>
+                        {artist.name}
+                      </h3>
+
+                      {/* La bio se déplie au survol pour TOUS les artistes.
+                          Le bloc étant ancré en bas de la carte, sa hauteur
+                          croissante pousse le nom vers le haut — le texte
+                          semble monter depuis le bord plutôt qu'apparaître
+                          d'un coup. Masqué sous md : sans souris, le survol
+                          n'existe pas et un appui ouvre directement la page. */}
+                      {artist.bio && (
+                        <p
+                          className={`hidden overflow-hidden font-light leading-relaxed text-neutral-300 opacity-0 transition-all duration-500 ease-out group-hover:opacity-100 group-focus-visible:opacity-100 md:block ${
+                            isFeature
+                              ? 'max-h-0 max-w-lg text-sm group-hover:mt-4 group-hover:max-h-32 group-focus-visible:mt-4 group-focus-visible:max-h-32'
+                              : 'max-h-0 text-xs group-hover:mt-3 group-hover:max-h-24 group-focus-visible:mt-3 group-focus-visible:max-h-24'
+                          }`}
+                        >
+                          <span className={isFeature ? 'line-clamp-3' : 'line-clamp-3'}>
+                            {artist.bio}
+                          </span>
+                        </p>
+                      )}
+                    </div>
+
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center border border-white/20 text-white transition-all group-hover:border-void-accent group-hover:bg-void-accent">
+                      <ArrowUpRight size={16} aria-hidden="true" />
+                    </span>
+                  </div>
+                </div>
+              </button>
+            </motion.li>
+          );
+        })}
+      </motion.ul>
     </section>
   );
 };

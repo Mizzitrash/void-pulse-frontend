@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -7,74 +7,39 @@ import { useDocumentMeta } from '../hooks/useDocumentMeta';
 import { ARTISTS_DATA } from '../data/artists';
 import type { Artist } from '../types/artist';
 import {
-  ArrowLeft,
-  Music,
-  ExternalLink,
-  Play,
-  Video,
-  Camera,
-  Share2,
-  Edit3,
-  Save,
-  X,
-  CheckCircle,
-  ShieldAlert,
-  Loader2,
+  ArrowLeft, Music, ExternalLink, Play, Pause, Video, Camera, Share2,
+  Edit3, Save, X, CheckCircle, ShieldAlert, Loader2,
 } from 'lucide-react';
-
-type SocialLink = {
-  label: string;
-  url: string;
-  icon: React.ReactNode;
-};
 
 const getYouTubeEmbedUrl = (url?: string): string | null => {
   if (!url) return null;
-  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
-  const match = url.match(regExp);
-  return match && match[2].length === 11
-    ? `https://www.youtube.com/embed/${match[2]}`
-    : null;
-};
-
-/**
- * Nettoie une chaîne de caractères pour faciliter la comparaison :
- * Convertit en minuscules, retire les espaces, tirets et caractères spéciaux.
- */
-const normalize = (str?: string): string => {
-  if (!str) return '';
-  return str.toLowerCase().replace(/[^a-z0-9]/g, '');
-};
-
-/**
- * Retourne la liste des rôles de l'utilisateur, normalisée en tableau de
- * strings en majuscules, que `profile.roles` soit une string unique,
- * un tableau, ou undefined. Évite le bug de `.toString()` sur un tableau
- * qui produirait "ARTISTE,ADMIN" au lieu d'une comparaison correcte.
- */
-const getUserRoles = (roles: unknown): string[] => {
-  if (!roles) return [];
-  if (Array.isArray(roles)) {
-    return roles.map((r) => String(r).toUpperCase());
+  const patterns = [
+    /youtube\.com\/watch\?v=([\w-]{11})/,
+    /youtu\.be\/([\w-]{11})/,
+    /youtube\.com\/embed\/([\w-]{11})/,
+    /youtube\.com\/shorts\/([\w-]{11})/,
+  ];
+  for (const p of patterns) {
+    const m = url.match(p);
+    if (m) return `https://www.youtube.com/embed/${m[1]}`;
   }
-  return [String(roles).toUpperCase()];
+  return null;
 };
 
-// Passe à true en développement pour afficher le bandeau de diagnostic.
-// À NE JAMAIS laisser actif en production : il expose le rôle et les IDs
-// de n'importe quel visiteur, y compris non connecté.
-const SHOW_DEBUG_BANNER = import.meta.env.DEV;
+/** Minuscules, sans accents ni séparateurs — pour comparer des identifiants. */
+const normalize = (str?: string): string =>
+  (str || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
+
+const SHOW_DEBUG = import.meta.env.DEV;
 
 export const ArtistDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-
   const { profile, hasPermission } = useAuth();
 
-  // Recherche initiale ultra-tolérante dans ARTISTS_DATA (fallback statique)
   const staticArtist = ARTISTS_DATA.find((a) => {
-    const targetId = normalize(id);
-    return normalize(a.id) === targetId || normalize(a.name) === targetId;
+    const target = normalize(id);
+    return normalize(a.id) === target || normalize(a.name) === target;
   });
 
   const [artistData, setArtistData] = useState<Artist | undefined>(staticArtist);
@@ -85,27 +50,24 @@ export const ArtistDetailPage: React.FC = () => {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [formData, setFormData] = useState<Partial<Artist>>({});
 
-  // --- CHARGEMENT DES DONNÉES DEPUIS FIRESTORE ---
-  // Avant : la page se contentait de ARTISTS_DATA (statique), donc une
-  // modification enregistrée n'était jamais revisible après un rechargement
-  // ou pour un autre visiteur. On va maintenant chercher le doc réel,
-  // avec ARTISTS_DATA comme simple fallback si le doc n'existe pas encore.
+  // Extrait audio — le champ `audio` existait dans les données de chaque
+  // artiste depuis le début sans qu'aucun écran ne l'utilise.
+  const [isPlaying, setIsPlaying] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
   useEffect(() => {
     let cancelled = false;
 
     const loadArtist = async () => {
       setIsLoading(true);
       const targetId = staticArtist?.id ?? id;
-
       if (!targetId) {
         setIsLoading(false);
         return;
       }
-
       try {
         const snap = await getDoc(doc(db, 'artists', targetId));
         if (cancelled) return;
-
         if (snap.exists()) {
           setArtistData({ id: snap.id, ...(snap.data() as Omit<Artist, 'id'>) });
         } else if (staticArtist) {
@@ -113,50 +75,50 @@ export const ArtistDetailPage: React.FC = () => {
         }
       } catch (error) {
         console.error('Erreur lors du chargement de la page artiste :', error);
-        if (!cancelled && staticArtist) {
-          setArtistData(staticArtist);
-        }
+        if (!cancelled && staticArtist) setArtistData(staticArtist);
       } finally {
         if (!cancelled) setIsLoading(false);
       }
     };
 
     loadArtist();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [id]);
 
-  // Appelé AVANT les retours anticipés ci-dessous : un hook ne peut pas
-  // être placé après un `return` conditionnel.
+  // Coupe la lecture au changement d'artiste : sans cela, l'extrait
+  // continuait par-dessus la page suivante.
+  useEffect(() => {
+    audioRef.current?.pause();
+    setIsPlaying(false);
+  }, [id]);
+
   useDocumentMeta({
     title: artistData?.name,
-    description: artistData?.bio
-      ? artistData.bio.slice(0, 155)
-      : undefined,
+    description: artistData?.bio ? artistData.bio.slice(0, 155) : undefined,
     image: artistData?.image,
   });
 
   if (isLoading) {
     return (
-      <div className="min-h-[70vh] flex items-center justify-center text-neutral-400">
-        <Loader2 className="animate-spin" size={28} />
+      <div className="flex min-h-[70vh] items-center justify-center text-neutral-500">
+        <Loader2 className="animate-spin" size={26} aria-hidden="true" />
       </div>
     );
   }
 
   if (!artistData) {
     return (
-      <div className="min-h-[70vh] flex flex-col items-center justify-center text-center px-4">
-        <h2 className="text-4xl font-black uppercase text-white mb-4">
-          Artiste Introuvable
-        </h2>
-        <p className="text-neutral-400 text-sm mb-8 font-mono">
-          L'artiste recherché n'existe pas ou n'est plus dans le roster.
+      <div className="flex min-h-[70vh] flex-col items-center justify-center px-6 text-center">
+        <p className="font-mono text-[10px] uppercase tracking-[0.4em] text-void-accent">Erreur</p>
+        <h1 className="mt-4 text-4xl font-black uppercase tracking-tight text-white">
+          Artiste introuvable
+        </h1>
+        <p className="mt-4 font-mono text-xs text-neutral-500">
+          Cet artiste n'existe pas ou n'est plus dans le roster.
         </p>
         <button
           onClick={() => navigate('/')}
-          className="px-6 py-3 border border-[#A00303] text-white text-xs font-bold tracking-widest uppercase bg-[#A00303]/20 hover:bg-[#A00303] transition-all cursor-pointer"
+          className="mt-8 border border-void-accent bg-void-accent px-6 py-3 font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-white transition-all hover:bg-transparent hover:text-void-accent"
         >
           Retour à l'accueil
         </button>
@@ -164,342 +126,321 @@ export const ArtistDetailPage: React.FC = () => {
     );
   }
 
-  // --- LOGIQUE D'AUTORISATION (UX uniquement — voir note ci-dessous) ---
-  // ⚠️ Cette vérification côté client ne fait que masquer/afficher le
-  // bouton "Modifier". Elle ne protège rien : n'importe qui peut appeler
-  // Firestore directement. La vraie protection doit vivre dans les
-  // Firestore Security Rules (règles côté serveur), qui doivent répliquer
-  // cette même logique (rôle + propriété de la page).
+  // --- Droits d'édition (confort d'affichage ; la protection réelle est
+  // dans les Firestore Rules) ---
+  const userRoles = Array.isArray(profile?.roles)
+    ? profile.roles.map((r) => String(r).toUpperCase())
+    : profile?.roles ? [String(profile.roles).toUpperCase()] : [];
 
-  const userRoles = getUserRoles(profile?.roles);
-
-  const isAdminOrFounder =
-    (hasPermission && (hasPermission('ADMIN') || hasPermission('FONDATEUR'))) ||
-    userRoles.some((r) => ['ADMIN', 'FONDATEUR', 'FOUNDER'].includes(r));
+  const canEditAny =
+    hasPermission('ADMIN') || hasPermission('FONDATEUR') || hasPermission('MANAGER') ||
+    userRoles.some((r) => ['ADMIN', 'FONDATEUR', 'FOUNDER', 'MANAGER'].includes(r));
 
   const isArtistRole =
-    (hasPermission && (hasPermission('ARTIST') || hasPermission('ARTISTE'))) ||
-    userRoles.some((r) => ['ARTIST', 'ARTISTE'].includes(r));
+    hasPermission('ARTISTE') || userRoles.some((r) => ['ARTIST', 'ARTISTE'].includes(r));
 
-  const normCurrentArtistId = normalize(artistData.id);
-  const normUserArtistId = normalize(profile?.artistId);
-  const normUserId = normalize(profile?.id);
+  const pageId = normalize(artistData.id);
+  const ownsPage =
+    Boolean(pageId) &&
+    (normalize(profile?.artistId) === pageId || normalize(profile?.id) === pageId);
 
-  const isSelfArtistPage =
-    Boolean(normCurrentArtistId) &&
-    ((Boolean(normUserArtistId) && normUserArtistId === normCurrentArtistId) ||
-      (Boolean(normUserId) && normUserId === normCurrentArtistId));
+  const canEdit = canEditAny || (isArtistRole && ownsPage);
 
-  const canEdit = isAdminOrFounder || (isArtistRole && isSelfArtistPage);
+  const view = <K extends keyof Artist>(key: K): Artist[K] =>
+    (isEditing ? formData[key] : artistData[key]) as Artist[K];
 
-  // --- DÉBUT ET ANNULATION D'ÉDITION ---
-  const handleStartEditing = () => {
-    setFormData({ ...artistData });
-    setSaveError(null);
-    setIsEditing(true);
-  };
-
-  const handleCancelEditing = () => {
-    setFormData({});
-    setSaveError(null);
-    setIsEditing(false);
-  };
-
-  // --- SAUVEGARDE DANS FIRESTORE ---
   const handleSave = async () => {
     setIsSaving(true);
     setSaveError(null);
     try {
-      const artistDocRef = doc(db, 'artists', artistData.id);
-      // setDoc + merge plutôt que updateDoc : fonctionne même si le
-      // document n'existe pas encore dans Firestore (cas des artistes
-      // encore uniquement présents dans le fichier statique ARTISTS_DATA).
-      // updateDoc aurait échoué avec "No document to update" dans ce cas.
-      await setDoc(artistDocRef, formData, { merge: true });
-
+      // setDoc + merge plutôt qu'updateDoc : fonctionne même si le
+      // document n'existe pas encore dans Firestore.
+      await setDoc(doc(db, 'artists', artistData.id), formData, { merge: true });
       setArtistData((prev) => (prev ? { ...prev, ...formData } : prev));
       setIsEditing(false);
       setSuccessMessage(true);
       setTimeout(() => setSuccessMessage(false), 3000);
     } catch (error) {
-      // Avant : en cas d'erreur (ex. refusé par les Security Rules), le
-      // code appliquait quand même les changements en local et fermait le
-      // mode édition — l'utilisateur croyait avoir sauvegardé alors que
-      // rien n'était écrit. On affiche maintenant l'erreur et on reste en
-      // mode édition pour ne pas donner un faux sentiment de succès.
-      console.error('Erreur lors de la mise à jour Firestore:', error);
-      setSaveError(
-        "La sauvegarde a échoué. Vérifie que tu as bien les droits pour modifier cette page."
-      );
+      console.error('Erreur lors de la mise à jour Firestore :', error);
+      setSaveError("La sauvegarde a échoué. Vérifie que tu as les droits sur cette page.");
     } finally {
       setIsSaving(false);
     }
   };
 
-  const avatarImage = artistData.image || '/default-avatar.jpg';
-  const embedVideoUrl = getYouTubeEmbedUrl(
-    isEditing ? formData.youtubeClip : artistData.youtubeClip
-  );
+  const toggleAudio = () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (isPlaying) {
+      audio.pause();
+      setIsPlaying(false);
+    } else {
+      audio.play().catch(() => setIsPlaying(false));
+      setIsPlaying(true);
+    }
+  };
 
-  const rawSocialLinks = [
-    { label: 'Spotify', url: isEditing ? formData.spotifyUrl : artistData.spotifyUrl, icon: <Music size={14} /> },
-    { label: 'YouTube', url: isEditing ? formData.youtubeUrl : artistData.youtubeUrl, icon: <Video size={14} /> },
-    { label: 'Instagram', url: isEditing ? formData.instagramUrl : artistData.instagramUrl, icon: <Camera size={14} /> },
-    { label: 'TikTok', url: isEditing ? formData.tiktokUrl : artistData.tiktokUrl, icon: <Share2 size={14} /> },
-  ];
+  const cover = view('image') || '/logo.png';
+  const embedUrl = getYouTubeEmbedUrl(view('youtubeClip'));
+  const audioSrc = artistData.audio;
 
-  const socialLinks = rawSocialLinks
-    .filter((link) => typeof link.url === 'string' && link.url.trim() !== '')
-    .map((link) => ({ ...link, url: link.url as string })) as SocialLink[];
+  const socials = [
+    { label: 'Spotify', url: view('spotifyUrl'), icon: Music },
+    { label: 'YouTube', url: view('youtubeUrl'), icon: Video },
+    { label: 'Instagram', url: view('instagramUrl'), icon: Camera },
+    { label: 'TikTok', url: view('tiktokUrl'), icon: Share2 },
+  ].filter((s) => typeof s.url === 'string' && s.url.trim() !== '') as
+    { label: string; url: string; icon: typeof Music }[];
+
+  const fieldClass =
+    'w-full border border-neutral-800 bg-black p-3 text-sm text-white outline-none focus:border-void-accent';
+  const microLabel = 'mb-1 block font-mono text-[10px] uppercase tracking-wider text-neutral-500';
 
   return (
-    <div className="pb-24 text-white">
-      {/* BANDEAU DE DIAGNOSTIC — dev uniquement, jamais en production */}
-      {SHOW_DEBUG_BANNER && (
-        <div className="bg-yellow-500/10 border-b border-yellow-500/30 p-2 px-4 text-[11px] font-mono text-yellow-300 flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <ShieldAlert size={14} />
-            <span className="font-bold uppercase tracking-wider">Diagnostic Autorisation :</span>
-          </div>
-          <div className="flex flex-wrap items-center gap-4 text-neutral-300">
-            <span>Profil Chargé : <strong className={profile ? 'text-green-400' : 'text-red-400'}>{profile ? 'OUI' : 'NON'}</strong></span>
+    <div className="pb-24">
+      {audioSrc && (
+        <audio ref={audioRef} src={audioSrc} onEnded={() => setIsPlaying(false)} preload="none" />
+      )}
+
+      {SHOW_DEBUG && (
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-yellow-500/30 bg-yellow-500/10 px-4 py-2 font-mono text-[11px] text-yellow-300">
+          <span className="flex items-center gap-2 font-bold uppercase tracking-wider">
+            <ShieldAlert size={14} aria-hidden="true" /> Diagnostic
+          </span>
+          <span className="flex flex-wrap gap-4 text-neutral-300">
             <span>Rôles : <strong className="text-white">{userRoles.join(', ') || 'AUCUN'}</strong></span>
-            <span>ID Page : <strong className="text-white">{normCurrentArtistId}</strong></span>
-            <span>artistId Profil : <strong className="text-white">{normUserArtistId || 'AUCUN'}</strong></span>
-            <span>A le droit d'éditer ? : <strong className={canEdit ? 'text-green-400' : 'text-red-400'}>{canEdit ? 'OUI' : 'NON'}</strong></span>
-          </div>
+            <span>ID page : <strong className="text-white">{pageId}</strong></span>
+            <span>artistId : <strong className="text-white">{normalize(profile?.artistId) || 'AUCUN'}</strong></span>
+            <span>Édition : <strong className={canEdit ? 'text-green-400' : 'text-red-400'}>{canEdit ? 'OUI' : 'NON'}</strong></span>
+          </span>
         </div>
       )}
 
-      {/* ALERTE DE SUCCÈS */}
       {successMessage && (
-        <div className="fixed top-6 right-6 z-50 flex items-center gap-2 px-4 py-3 bg-green-900/90 border border-green-500 rounded-xl text-green-200 text-xs font-mono font-bold shadow-2xl backdrop-blur-md">
-          <CheckCircle size={16} />
-          <span>Modifications enregistrées avec succès !</span>
+        <div role="status" className="fixed right-6 top-24 z-50 flex items-center gap-2 border border-green-500 bg-green-950/90 px-4 py-3 font-mono text-xs font-bold text-green-200 shadow-2xl backdrop-blur">
+          <CheckCircle size={16} aria-hidden="true" /> Modifications enregistrées
         </div>
       )}
-
-      {/* ALERTE D'ERREUR DE SAUVEGARDE */}
       {saveError && (
-        <div className="fixed top-6 right-6 z-50 flex items-center gap-2 px-4 py-3 bg-red-900/90 border border-red-500 rounded-xl text-red-200 text-xs font-mono font-bold shadow-2xl backdrop-blur-md">
-          <ShieldAlert size={16} />
-          <span>{saveError}</span>
+        <div role="alert" className="fixed right-6 top-24 z-50 flex items-center gap-2 border border-red-500 bg-red-950/90 px-4 py-3 font-mono text-xs font-bold text-red-200 shadow-2xl backdrop-blur">
+          <ShieldAlert size={16} aria-hidden="true" /> {saveError}
         </div>
       )}
 
-      {/* BANNIÈRE ET HEADER */}
-      <div className="relative h-72 md:h-96 w-full overflow-hidden bg-neutral-900 border-b border-neutral-800">
+      {/* ─────────── HERO ─────────── */}
+      <section className="relative min-h-[78vh] w-full overflow-hidden">
         <img
-          src={isEditing ? formData.image || avatarImage : avatarImage}
-          alt={`Bannière ${artistData.name}`}
-          className="w-full h-full object-cover filter brightness-50 blur-sm scale-105"
+          src={cover}
+          alt=""
+          className="absolute inset-0 h-full w-full object-cover object-center"
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent" />
+        {/* Double dégradé : l'un assombrit le bas pour le texte, l'autre
+            crée une vignette latérale qui empêche l'image de « baver »
+            sur les bords du cadre. */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black via-black/70 to-black/30" />
+        <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-transparent to-black/70" />
 
         <button
           onClick={() => navigate(-1)}
-          className="absolute top-6 left-6 z-20 flex items-center gap-2 px-4 py-2 bg-black/80 backdrop-blur-md border border-neutral-800 rounded-xl text-xs font-mono font-bold tracking-widest text-neutral-300 hover:text-white hover:border-neutral-600 transition-all cursor-pointer"
+          className="absolute left-6 top-6 z-20 flex items-center gap-2 border border-white/15 bg-black/60 px-4 py-2.5 font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-300 backdrop-blur transition-colors hover:border-white hover:text-white"
         >
-          <ArrowLeft size={16} />
-          <span>RETOUR</span>
+          <ArrowLeft size={14} aria-hidden="true" /> Retour
         </button>
 
         {canEdit && (
-          <div className="absolute top-6 right-6 z-20 flex items-center gap-3">
+          <div className="absolute right-6 top-6 z-20 flex items-center gap-2">
             {!isEditing ? (
               <button
-                onClick={handleStartEditing}
-                className="flex items-center gap-2 px-4 py-2 bg-[#A00303] hover:bg-[#c00404] text-white border border-[#A00303] rounded-xl text-xs font-mono font-bold tracking-widest transition-all cursor-pointer shadow-lg"
+                onClick={() => { setFormData({ ...artistData }); setSaveError(null); setIsEditing(true); }}
+                className="flex items-center gap-2 border border-void-accent bg-void-accent px-4 py-2.5 font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-white transition-all hover:bg-transparent hover:text-void-accent"
               >
-                <Edit3 size={16} />
-                <span>{isAdminOrFounder ? 'MODIFIER LA PAGE (ADMIN)' : 'MODIFIER MA PAGE'}</span>
+                <Edit3 size={14} aria-hidden="true" />
+                {canEditAny ? 'Modifier (admin)' : 'Modifier ma page'}
               </button>
             ) : (
-              <div className="flex items-center gap-2">
+              <>
                 <button
-                  onClick={handleCancelEditing}
+                  onClick={() => { setFormData({}); setIsEditing(false); setSaveError(null); }}
                   disabled={isSaving}
-                  className="flex items-center gap-2 px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 rounded-xl text-xs font-mono font-bold tracking-widest transition-all cursor-pointer"
+                  className="flex items-center gap-2 border border-neutral-700 bg-black/70 px-4 py-2.5 font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-300 backdrop-blur transition-colors hover:text-white"
                 >
-                  <X size={16} />
-                  <span>ANNULER</span>
+                  <X size={14} aria-hidden="true" /> Annuler
                 </button>
                 <button
                   onClick={handleSave}
                   disabled={isSaving}
-                  className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded-xl text-xs font-mono font-bold tracking-widest transition-all cursor-pointer shadow-lg"
+                  className="flex items-center gap-2 bg-green-600 px-4 py-2.5 font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-white transition-colors hover:bg-green-700 disabled:opacity-50"
                 >
-                  <Save size={16} />
-                  <span>{isSaving ? 'ENREGISTREMENT...' : 'ENREGISTRER'}</span>
+                  {isSaving ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Save size={14} aria-hidden="true" />}
+                  {isSaving ? 'Envoi…' : 'Enregistrer'}
                 </button>
-              </div>
+              </>
             )}
           </div>
         )}
-      </div>
 
-      {/* INFOS PROFIL ARTISTE */}
-      <div className="max-w-6xl mx-auto px-6 relative z-10 -mt-24">
-        <div className="flex flex-col md:flex-row items-center md:items-end gap-6 pb-8 border-b border-neutral-800">
-          <img
-            src={isEditing ? formData.image || avatarImage : avatarImage}
-            alt={artistData.name}
-            className="w-36 h-36 md:w-48 md:h-48 rounded-2xl border-4 border-black object-cover shadow-[0_0_30px_rgba(160,3,3,0.4)]"
-          />
-
-          <div className="text-center md:text-left flex-1 w-full">
-            {isEditing ? (
-              <div className="mb-2">
-                <label className="text-xs font-mono text-neutral-400 block mb-1">Genre :</label>
-                <input
-                  type="text"
-                  value={formData.genre || ''}
+        <div className="relative z-10 mx-auto flex min-h-[78vh] max-w-6xl flex-col justify-end px-6 pb-14">
+          {isEditing ? (
+            <div className="max-w-xl space-y-3 border border-neutral-800 bg-black/85 p-5 backdrop-blur">
+              <div>
+                <label htmlFor="a-genre" className={microLabel}>Genre</label>
+                <input id="a-genre" type="text" value={formData.genre || ''}
                   onChange={(e) => setFormData({ ...formData, genre: e.target.value })}
-                  placeholder="Ex: TRAP / DRILL"
-                  className="bg-neutral-900 border border-neutral-700 px-3 py-1.5 rounded text-xs font-mono text-white w-full max-w-xs focus:border-[#A00303] outline-none"
-                />
+                  placeholder="TRAP / DRILL" className={fieldClass} />
               </div>
-            ) : (
-              artistData.genre && (
-                <span className="text-[#A00303] text-xs font-bold tracking-[0.3em] uppercase bg-[#A00303]/10 border border-[#A00303]/30 px-3 py-1 rounded">
+              <div>
+                <label htmlFor="a-name" className={microLabel}>Nom d'artiste</label>
+                <input id="a-name" type="text" value={formData.name || ''}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  className={`${fieldClass} text-xl font-black uppercase`} />
+              </div>
+              <div>
+                <label htmlFor="a-image" className={microLabel}>Image (URL ou chemin)</label>
+                <input id="a-image" type="text" value={formData.image || ''}
+                  onChange={(e) => setFormData({ ...formData, image: e.target.value })}
+                  placeholder="/pdp-nsk.jpg" className={fieldClass} />
+              </div>
+            </div>
+          ) : (
+            <>
+              {artistData.genre && (
+                <span className="font-mono text-[10px] uppercase tracking-[0.4em] text-void-accent">
                   {artistData.genre}
                 </span>
-              )
-            )}
-
-            {isEditing ? (
-              <div className="mt-3">
-                <label className="text-xs font-mono text-neutral-400 block mb-1">Nom d'artiste :</label>
-                <input
-                  type="text"
-                  value={formData.name || ''}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="bg-neutral-900 border border-neutral-700 px-3 py-2 rounded text-xl font-black text-white w-full max-w-md focus:border-[#A00303] outline-none"
-                />
-              </div>
-            ) : (
-              <h1 className="text-4xl md:text-6xl font-black uppercase text-white tracking-tight mt-3">
+              )}
+              <h1 className="mt-3 text-[clamp(3rem,13vw,9rem)] font-black uppercase leading-[0.85] tracking-[-0.04em] text-white">
                 {artistData.name}
               </h1>
-            )}
+
+              {audioSrc && (
+                <button
+                  onClick={toggleAudio}
+                  className="mt-8 flex w-fit items-center gap-3 border border-white/20 bg-black/50 px-5 py-3 font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-white backdrop-blur transition-all hover:border-void-accent hover:bg-void-accent"
+                >
+                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-void-accent">
+                    {isPlaying ? <Pause size={13} aria-hidden="true" /> : <Play size={13} className="ml-0.5" aria-hidden="true" />}
+                  </span>
+                  {isPlaying ? 'Pause' : 'Écouter un extrait'}
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      </section>
+
+      <div className="mx-auto max-w-6xl px-6">
+
+        {/* ─────────── BIO + RÉSEAUX ─────────── */}
+        <section className="grid grid-cols-1 gap-12 border-b border-white/10 py-16 lg:grid-cols-[1.6fr_1fr]">
+          <div>
+            <h2 className="flex items-center gap-3 font-mono text-[10px] font-bold uppercase tracking-[0.3em] text-neutral-400">
+              Biographie <span className="h-px flex-1 bg-white/10" />
+            </h2>
 
             {isEditing ? (
-              <div className="mt-3">
-                <label className="text-xs font-mono text-neutral-400 block mb-1">Biographie :</label>
-                <textarea
-                  value={formData.bio || ''}
-                  onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
-                  rows={3}
-                  className="bg-neutral-900 border border-neutral-700 p-3 rounded text-xs font-mono text-white w-full max-w-2xl focus:border-[#A00303] outline-none"
-                />
-              </div>
+              <textarea
+                value={formData.bio || ''}
+                onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
+                rows={6}
+                className={`${fieldClass} mt-5 resize-none leading-relaxed`}
+              />
             ) : (
-              artistData.bio && (
-                <p className="text-neutral-400 text-sm max-w-2xl mt-3 font-light leading-relaxed">
-                  {artistData.bio}
-                </p>
-              )
-            )}
-
-            {isEditing ? (
-              <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-2xl bg-neutral-900/60 p-4 border border-neutral-800 rounded-xl">
-                <div>
-                  <label className="text-[10px] font-mono text-neutral-400 block mb-1">URL Spotify :</label>
-                  <input
-                    type="text"
-                    value={formData.spotifyUrl || ''}
-                    onChange={(e) => setFormData({ ...formData, spotifyUrl: e.target.value })}
-                    className="bg-black border border-neutral-800 px-2 py-1 rounded text-xs text-white w-full"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] font-mono text-neutral-400 block mb-1">URL YouTube :</label>
-                  <input
-                    type="text"
-                    value={formData.youtubeUrl || ''}
-                    onChange={(e) => setFormData({ ...formData, youtubeUrl: e.target.value })}
-                    className="bg-black border border-neutral-800 px-2 py-1 rounded text-xs text-white w-full"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] font-mono text-neutral-400 block mb-1">URL Instagram :</label>
-                  <input
-                    type="text"
-                    value={formData.instagramUrl || ''}
-                    onChange={(e) => setFormData({ ...formData, instagramUrl: e.target.value })}
-                    className="bg-black border border-neutral-800 px-2 py-1 rounded text-xs text-white w-full"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] font-mono text-neutral-400 block mb-1">URL TikTok :</label>
-                  <input
-                    type="text"
-                    value={formData.tiktokUrl || ''}
-                    onChange={(e) => setFormData({ ...formData, tiktokUrl: e.target.value })}
-                    className="bg-black border border-neutral-800 px-2 py-1 rounded text-xs text-white w-full"
-                  />
-                </div>
-              </div>
-            ) : (
-              socialLinks.length > 0 && (
-                <div className="flex flex-wrap items-center justify-center md:justify-start gap-3 mt-6">
-                  {socialLinks.map((social) => (
-                    <a
-                      key={social.label}
-                      href={social.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-2 px-4 py-2 bg-neutral-900 border border-neutral-800 hover:border-[#A00303] hover:bg-[#A00303]/20 hover:text-white text-neutral-300 text-xs font-mono font-bold uppercase tracking-wider rounded-lg transition-all"
-                    >
-                      {social.icon}
-                      <span>{social.label}</span>
-                      <ExternalLink size={12} className="opacity-50" />
-                    </a>
-                  ))}
-                </div>
-              )
+              <p className="mt-6 border-l-2 border-void-accent/40 pl-6 text-base font-light leading-relaxed text-neutral-300">
+                {artistData.bio || (
+                  <span className="font-mono text-xs text-neutral-600">Pas encore de biographie.</span>
+                )}
+              </p>
             )}
           </div>
-        </div>
 
-        {/* SECTION VIDÉO YOUTUBE */}
-        <div className="mt-12">
-          <h2 className="text-xl font-black uppercase tracking-wider text-white mb-4 flex items-center gap-3">
-            <Play className="text-[#A00303] fill-current" size={20} />
-            <span>À LA UNE</span>
+          <div>
+            <h2 className="flex items-center gap-3 font-mono text-[10px] font-bold uppercase tracking-[0.3em] text-neutral-400">
+              Écouter <span className="h-px flex-1 bg-white/10" />
+            </h2>
+
+            {isEditing ? (
+              <div className="mt-5 space-y-3">
+                {([
+                  ['spotifyUrl', 'Spotify'],
+                  ['youtubeUrl', 'YouTube'],
+                  ['instagramUrl', 'Instagram'],
+                  ['tiktokUrl', 'TikTok'],
+                ] as const).map(([key, label]) => (
+                  <div key={key}>
+                    <label htmlFor={`a-${key}`} className={microLabel}>{label}</label>
+                    <input
+                      id={`a-${key}`} type="url" placeholder="https://"
+                      value={(formData[key] as string) || ''}
+                      onChange={(e) => setFormData({ ...formData, [key]: e.target.value })}
+                      className={fieldClass}
+                    />
+                  </div>
+                ))}
+              </div>
+            ) : socials.length > 0 ? (
+              <ul className="mt-6 space-y-2">
+                {socials.map(({ label, url, icon: Icon }) => (
+                  <li key={label}>
+                    <a
+                      href={url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="group flex items-center justify-between border border-neutral-900 bg-neutral-950 px-5 py-4 transition-all hover:border-void-accent hover:bg-void-accent/10"
+                    >
+                      <span className="flex items-center gap-3 font-mono text-xs font-bold uppercase tracking-wider text-neutral-300 transition-colors group-hover:text-white">
+                        <Icon size={15} className="text-void-accent" aria-hidden="true" />
+                        {label}
+                      </span>
+                      <ExternalLink size={13} className="text-neutral-700 transition-colors group-hover:text-void-accent" aria-hidden="true" />
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-6 font-mono text-xs text-neutral-600">
+                Aucun lien renseigné.
+              </p>
+            )}
+          </div>
+        </section>
+
+        {/* ─────────── VIDÉO ─────────── */}
+        <section className="py-16">
+          <h2 className="flex items-center gap-3 font-mono text-[10px] font-bold uppercase tracking-[0.3em] text-neutral-400">
+            <Play size={12} className="text-void-accent" aria-hidden="true" />
+            À la une
+            <span className="h-px flex-1 bg-white/10" />
           </h2>
 
           {isEditing && (
-            <div className="mb-4 max-w-2xl">
-              <label className="text-xs font-mono text-neutral-400 block mb-1">
-                Lien de la vidéo YouTube intégrée :
-              </label>
+            <div className="mt-5 max-w-2xl">
+              <label htmlFor="a-clip" className={microLabel}>Lien de la vidéo YouTube</label>
               <input
-                type="text"
-                value={formData.youtubeClip || ''}
+                id="a-clip" type="url" value={formData.youtubeClip || ''}
                 onChange={(e) => setFormData({ ...formData, youtubeClip: e.target.value })}
-                placeholder="https://www.youtube.com/watch?v=..."
-                className="bg-neutral-900 border border-neutral-700 px-3 py-2 rounded text-xs font-mono text-white w-full focus:border-[#A00303] outline-none"
+                placeholder="https://www.youtube.com/watch?v=…"
+                className={fieldClass}
               />
             </div>
           )}
 
-          {embedVideoUrl ? (
-            <div className="relative w-full aspect-video rounded-2xl overflow-hidden border border-neutral-800 bg-neutral-950 shadow-2xl">
+          {embedUrl ? (
+            <div className="mt-6 aspect-video w-full overflow-hidden border border-neutral-800 bg-black">
               <iframe
-                src={embedVideoUrl}
-                title={`Vidéo à la une - ${artistData.name}`}
-                className="w-full h-full border-0"
+                src={embedUrl}
+                title={`Vidéo à la une — ${artistData.name}`}
+                className="h-full w-full border-0"
+                loading="lazy"
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                 allowFullScreen
               />
             </div>
           ) : (
-            <div className="p-8 border border-dashed border-neutral-800 rounded-2xl text-center text-neutral-500 font-mono text-xs">
-              Aucune vidéo YouTube configurée.
+            <div className="mt-6 border border-dashed border-neutral-900 p-16 text-center">
+              <p className="font-mono text-xs text-neutral-600">Aucune vidéo configurée.</p>
             </div>
           )}
-        </div>
+        </section>
       </div>
     </div>
   );

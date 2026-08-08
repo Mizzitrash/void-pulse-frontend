@@ -1,5 +1,13 @@
 rules_version = '2';
 
+// ─────────────────────────────────────────────────────────────────────
+// LIMITE STRUCTURELLE À CONNAÎTRE
+// Les règles Storage ne peuvent PAS lire Firestore : impossible d'y
+// vérifier un rôle. Tout ce qu'on peut contrôler ici, c'est l'identité
+// (request.auth.uid), la taille et le type du fichier. La protection
+// contre l'abus automatisé vient de Firebase App Check, pas d'ici.
+// ─────────────────────────────────────────────────────────────────────
+
 service firebase.storage {
   match /b/{bucket}/o {
 
@@ -7,48 +15,63 @@ service firebase.storage {
       return request.auth != null;
     }
 
-    // Limite la taille des uploads à 10 Mo et impose un type image.
-    function isValidImage() {
-      return request.resource.size < 10 * 1024 * 1024
+    function isImage(maxMb) {
+      return request.resource.size < maxMb * 1024 * 1024
         && request.resource.contentType.matches('image/.*');
     }
 
-    // Images liées aux posts d'actu — écriture réservée aux connectés
-    // (la vérification de rôle CM/Admin se fait déjà côté Firestore Rules
-    // sur la création du post ; ici on protège juste le fichier lui-même).
-    match /posts/{fileName} {
-      allow read: if true;
-      allow write: if isSignedIn() && isValidImage();
-      allow delete: if isSignedIn();
-    }
-
-    // Images de pages artistes (avatar, bannière...).
-    match /artists/{artistId}/{fileName} {
-      allow read: if true;
-      allow write: if isSignedIn() && isValidImage();
-      allow delete: if isSignedIn();
-    }
-
-    // Avatars de profil utilisateur.
+    // Avatars — chacun n'écrit que dans SON dossier.
     match /avatars/{userId}/{fileName} {
       allow read: if true;
-      allow write: if isSignedIn() && request.auth.uid == userId && isValidImage();
+      allow write: if isSignedIn() && request.auth.uid == userId && isImage(5);
       allow delete: if isSignedIn() && request.auth.uid == userId;
     }
 
-    // Démos envoyées via la page "Rejoins-nous".
-    // L'écriture est ouverte au public (pas de compte requis pour postuler),
-    // ce qui expose au risque d'utiliser le bucket comme hébergement gratuit.
-    // On le limite par un plafond de taille et une restriction stricte aux
-    // formats audio/vidéo. La lecture reste fermée aux visiteurs anonymes.
+    // Portraits de l'équipe (section "L'équipe" sur l'accueil).
+    // Chemin distinct des avatars : une carte d'équipe s'affiche en
+    // portrait 3:4 sur plusieurs centaines de pixels, là où un avatar
+    // sert de pastille de 40 px. Réutiliser l'avatar donnait une image
+    // étirée bien au-delà de sa définition, et recadrée de travers.
+    match /team-photos/{userId}/{fileName} {
+      allow read: if true;
+      allow write: if isSignedIn() && request.auth.uid == userId && isImage(8);
+      allow delete: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Images d'actualités.
+    // Plafond ramené de 10 à 5 Mo : une illustration d'article n'a aucune
+    // raison de peser davantage, et cela divise par deux ce qu'un compte
+    // malveillant peut téléverser avant d'être remarqué.
+    match /posts/{fileName} {
+      allow read: if true;
+      allow write: if isSignedIn() && isImage(5);
+      allow delete: if isSignedIn();
+    }
+
+    // Démos envoyées via "Rejoins-nous".
+    // AVANT : écriture ouverte à TOUT LE MONDE, sans authentification. Le
+    // bucket devenait un hébergement de fichiers gratuit — 50 Mo par envoi,
+    // en boucle, jusqu'à saturer le quota (et la facture). La page étant
+    // désormais derrière RequireAuth, exiger un compte ne coûte rien et
+    // ferme complètement ce vecteur.
     match /demos/{submissionId}/{fileName} {
       allow read: if isSignedIn();
-      allow write: if request.resource.size < 50 * 1024 * 1024
+      allow write: if isSignedIn()
+        && request.resource.size < 50 * 1024 * 1024
         && (
           request.resource.contentType.matches('audio/.*') ||
           request.resource.contentType.matches('video/.*')
         );
       allow delete: if isSignedIn();
+    }
+
+    // Chemin /artists/ conservé mais fermé en écriture : aucun code du site
+    // ne l'utilise (les visuels d'artistes sont saisis sous forme d'URL).
+    // Le laisser ouvert offrait à n'importe quel compte connecté la
+    // possibilité d'écraser ou de supprimer les fichiers d'un autre.
+    match /artists/{artistId}/{fileName} {
+      allow read: if true;
+      allow write, delete: if false;
     }
 
     // Tout le reste est refusé par défaut.

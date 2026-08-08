@@ -8,10 +8,10 @@ import { Camera, Video, Music2, Disc3, Mail, ArrowUpRight } from 'lucide-react';
    une icône absente qu'une icône qui mène à une page d'erreur.
    ═══════════════════════════════════════════════════════════════════ */
 const CONTACTS = {
-  email: 'contact@voidpulse.fr',
-  instagram: '',
-  youtube: '',
-  tiktok: '',
+  email: 'voidpulse.contact@gmail.com',
+  instagram: 'https://www.instagram.com/_void.pulse_/',
+  youtube: 'https://www.youtube.com/@VOIDPULSE',
+  tiktok: 'https://www.tiktok.com/@voidpulselabel',
   spotify: '',
 };
 
@@ -109,11 +109,7 @@ export const Footer: React.FC = () => {
                   </li>
                 ))}
               </ul>
-            ) : (
-              <p className="mt-4 font-mono text-[10px] leading-relaxed text-neutral-600">
-                Réseaux à renseigner dans Footer.tsx
-              </p>
-            )}
+            ) : null}
 
             <Link
               to="/rejoins-nous"

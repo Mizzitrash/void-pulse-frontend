@@ -7,6 +7,13 @@ import {
   GoogleAuthProvider,
   signInWithPopup,
   sendPasswordResetEmail,
+  sendSignInLinkToEmail,
+  isSignInWithEmailLink,
+  signInWithEmailLink,
+  verifyBeforeUpdateEmail,
+  reauthenticateWithCredential,
+  reauthenticateWithPopup,
+  EmailAuthProvider,
   type User as FirebaseUser
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
@@ -32,6 +39,23 @@ interface AuthContextType {
   signup: (email: string, pass: string, username: string) => Promise<void>;
   loginWithGoogle: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
+  // Connexion par lien magique : aucun mot de passe à retenir, aucun
+  // fournisseur tiers à configurer. Firebase envoie un lien à usage
+  // unique ; l'ouvrir authentifie la personne.
+  sendMagicLink: (email: string) => Promise<void>;
+  isMagicLink: (url: string) => boolean;
+  completeMagicLink: (url: string, fallbackEmail?: string) => Promise<void>;
+  /** 'password' (email/mot de passe ou lien magique) ou 'google.com'. */
+  providerId: string | null;
+  /** Envoie un lien de réinitialisation à l'adresse du compte connecté. */
+  sendPasswordResetToSelf: () => Promise<void>;
+  /**
+   * Change l'adresse du compte. Firebase envoie un lien de confirmation à
+   * la NOUVELLE adresse ; le changement ne prend effet qu'une fois ce lien
+   * ouvert. Le mot de passe actuel n'est requis que pour les comptes qui
+   * en ont un — les comptes Google passent par une repopup.
+   */
+  changeEmail: (newEmail: string, currentPassword?: string) => Promise<void>;
   logout: () => Promise<void>;
   hasPermission: (requiredRole: UserRole) => boolean;
   updateProfileData: (newData: Partial<UserProfile>) => Promise<void>;
@@ -77,6 +101,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const userRoles: UserRole[] = rawRoles.length > 0
               ? rawRoles.map((r) => String(r).toUpperCase() as UserRole)
               : ['USER'];
+
+            // L'adresse du compte peut avoir changé hors de l'application,
+            // en ouvrant le lien de confirmation depuis la boîte mail. On
+            // resynchronise donc le document au retour, sinon la recherche
+            // par email de l'AdminDashboard porterait sur l'ancienne.
+            if (authUser.email && data.email && data.email !== authUser.email) {
+              updateDoc(userDocRef, { email: authUser.email }).catch((e) =>
+                console.error('Synchronisation email :', e)
+              );
+            }
 
             const loadedProfile = {
               id: authUser.uid,
@@ -154,6 +188,87 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await sendPasswordResetEmail(auth, email);
   };
 
+  // L'adresse est conservée localement entre l'envoi et le retour : sans
+  // elle, Firebase ne peut pas valider le lien. Si la personne ouvre le
+  // lien sur un autre appareil, ce stockage est vide et il faut lui
+  // redemander son adresse — d'où le paramètre fallbackEmail.
+  const EMAIL_LINK_KEY = 'void-pulse-magic-email';
+
+  const sendMagicLink = async (email: string) => {
+    await sendSignInLinkToEmail(auth, email, {
+      url: `${window.location.origin}/auth`,
+      handleCodeInApp: true,
+    });
+    try {
+      window.localStorage.setItem(EMAIL_LINK_KEY, email);
+    } catch {
+      /* navigation privée stricte : l'adresse sera redemandée au retour */
+    }
+  };
+
+  const isMagicLink = (url: string) => isSignInWithEmailLink(auth, url);
+
+  const providerId = firebaseUser?.providerData?.[0]?.providerId ?? null;
+
+  const sendPasswordResetToSelf = async () => {
+    if (!firebaseUser?.email) throw new Error('NO_EMAIL');
+    await sendPasswordResetEmail(auth, firebaseUser.email);
+  };
+
+  /**
+   * Firebase refuse les opérations sensibles si la session n'est pas
+   * récente (erreur auth/requires-recent-login) : sans cette étape, une
+   * personne connectée depuis plusieurs jours verrait le changement
+   * d'adresse échouer sans explication.
+   */
+  const reauthenticate = async (currentPassword?: string) => {
+    const user = auth.currentUser;
+    if (!user) throw new Error('NO_USER');
+
+    const provider = user.providerData?.[0]?.providerId;
+
+    if (provider === 'google.com') {
+      await reauthenticateWithPopup(user, new GoogleAuthProvider());
+      return;
+    }
+
+    if (!currentPassword) throw new Error('PASSWORD_REQUIRED');
+    if (!user.email) throw new Error('NO_EMAIL');
+    const credential = EmailAuthProvider.credential(user.email, currentPassword);
+    await reauthenticateWithCredential(user, credential);
+  };
+
+  const changeEmail = async (newEmail: string, currentPassword?: string) => {
+    const user = auth.currentUser;
+    if (!user) throw new Error('NO_USER');
+
+    await reauthenticate(currentPassword);
+
+    // verifyBeforeUpdateEmail plutôt qu'updateEmail : l'adresse n'est
+    // remplacée qu'après ouverture du lien envoyé à la NOUVELLE boîte.
+    // Cela empêche de verrouiller un compte sur une adresse saisie de
+    // travers, dont personne ne recevrait jamais les emails.
+    await verifyBeforeUpdateEmail(user, newEmail.trim());
+  };
+
+  const completeMagicLink = async (url: string, fallbackEmail?: string) => {
+    let stored: string | null = null;
+    try {
+      stored = window.localStorage.getItem(EMAIL_LINK_KEY);
+    } catch {
+      stored = null;
+    }
+    const email = stored || fallbackEmail;
+    if (!email) throw new Error('EMAIL_REQUIRED');
+
+    await signInWithEmailLink(auth, email, url);
+    try {
+      window.localStorage.removeItem(EMAIL_LINK_KEY);
+    } catch {
+      /* sans importance */
+    }
+  };
+
   const updateProfileData = async (newData: Partial<UserProfile>) => {
     if (!firebaseUser || !profile) return;
 
@@ -208,7 +323,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ firebaseUser, profile, loading, login, signup, loginWithGoogle, resetPassword, logout, hasPermission, updateProfileData, updateUserRoles }}>
+    <AuthContext.Provider value={{ firebaseUser, profile, loading, login, signup, loginWithGoogle, resetPassword, sendMagicLink, isMagicLink, completeMagicLink, providerId, sendPasswordResetToSelf, changeEmail, logout, hasPermission, updateProfileData, updateUserRoles }}>
       {!loading && children}
     </AuthContext.Provider>
   );
