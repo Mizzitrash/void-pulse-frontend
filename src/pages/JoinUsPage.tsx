@@ -1,18 +1,24 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../firebase';
 import { useDocumentMeta } from '../hooks/useDocumentMeta';
-import { Send, Upload, CheckCircle2, Loader2, X, Link2 } from 'lucide-react';
+import { Send, Upload, CheckCircle2, Loader2, X, Link2, FileAudio, ArrowRight } from 'lucide-react';
 
 const MAX_MESSAGE = 1000;
 const MAX_FILE_BYTES = 50 * 1024 * 1024; // 50 Mo
+
+const formatSize = (bytes: number) =>
+  bytes < 1024 * 1024
+    ? `${Math.round(bytes / 1024)} Ko`
+    : `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
 
 export const JoinUsPage: React.FC = () => {
   useDocumentMeta({
     title: 'Rejoins-nous',
     description:
-      "Envoie ta démo à VØID PULSE. Formulaire de candidature ouvert aux artistes, beatmakers et producteurs.",
+      'Envoie ta démo à VØID PULSE. Candidatures ouvertes aux artistes, beatmakers et producteurs.',
   });
 
   const [artistName, setArtistName] = useState('');
@@ -21,10 +27,10 @@ export const JoinUsPage: React.FC = () => {
   const [message, setMessage] = useState('');
   const [linkUrl, setLinkUrl] = useState('');
   const [file, setFile] = useState<File | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
 
   // Champ piège : invisible pour un humain, mais rempli par la plupart des
   // robots qui remplissent aveuglément tous les champs d'un formulaire.
-  // Si on le reçoit non vide, on ignore silencieusement la soumission.
   const [honeypot, setHoneypot] = useState('');
 
   const [progress, setProgress] = useState(0);
@@ -32,24 +38,27 @@ export const JoinUsPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isSent, setIsSent] = useState(false);
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selected = e.target.files?.[0];
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  /** Validation commune au choix par bouton et au glisser-déposer. */
+  const acceptFile = (selected: File | undefined | null) => {
     setError(null);
-    if (!selected) {
-      setFile(null);
-      return;
-    }
+    if (!selected) return;
     if (!selected.type.startsWith('audio/') && !selected.type.startsWith('video/')) {
       setError('Seuls les fichiers audio et vidéo sont acceptés.');
-      e.target.value = '';
       return;
     }
     if (selected.size > MAX_FILE_BYTES) {
       setError('Fichier trop lourd (50 Mo maximum). Utilise plutôt un lien.');
-      e.target.value = '';
       return;
     }
     setFile(selected);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    acceptFile(e.dataTransfer.files?.[0]);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -77,14 +86,12 @@ export const JoinUsPage: React.FC = () => {
       let filePath = '';
 
       if (file) {
-        // Chemin unique : évite qu'une soumission écrase la précédente.
         const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-80);
         filePath = `demos/${Date.now()}-${Math.random().toString(36).slice(2, 10)}/${safeName}`;
         const fileRef = ref(storage, filePath);
 
-        // uploadBytesResumable plutôt que uploadBytes : sur un fichier de
-        // plusieurs dizaines de Mo, l'utilisateur a besoin de voir que
-        // quelque chose se passe, sinon il quitte la page.
+        // uploadBytesResumable plutôt qu'uploadBytes : sur plusieurs
+        // dizaines de Mo, sans retour visuel la personne quitte la page.
         const task = uploadBytesResumable(fileRef, file, { contentType: file.type });
 
         await new Promise<void>((resolve, reject) => {
@@ -113,7 +120,7 @@ export const JoinUsPage: React.FC = () => {
 
       setIsSent(true);
     } catch (err) {
-      console.error('Erreur lors de l\'envoi de la candidature :', err);
+      console.error("Erreur lors de l'envoi de la candidature :", err);
       setError("L'envoi a échoué. Vérifie ta connexion et réessaie.");
     } finally {
       setIsSending(false);
@@ -122,217 +129,239 @@ export const JoinUsPage: React.FC = () => {
 
   if (isSent) {
     return (
-      <div className="min-h-[70vh] flex flex-col items-center justify-center text-center px-6 max-w-lg mx-auto">
-        <CheckCircle2 className="text-emerald-500 mb-6" size={56} aria-hidden="true" />
-        <h1 className="text-3xl font-black uppercase tracking-tight text-white">
+      <div className="mx-auto flex min-h-[70vh] max-w-lg flex-col items-center justify-center px-6 text-center">
+        <CheckCircle2 className="text-emerald-500" size={52} aria-hidden="true" />
+        <p className="mt-6 font-mono text-[10px] uppercase tracking-[0.4em] text-void-accent">
+          Bien reçu
+        </p>
+        <h1 className="mt-3 text-4xl font-black uppercase leading-none tracking-tight text-white">
           Candidature envoyée
         </h1>
-        <p className="text-neutral-400 text-xs font-mono mt-4 leading-relaxed">
-          Merci. On écoute chaque démo reçue. Si ton univers correspond à celui du
-          label, on revient vers toi par email.
+        <p className="mt-5 text-sm font-light leading-relaxed text-neutral-400">
+          On écoute chaque démo reçue. Si ton univers correspond à celui du label,
+          on revient vers toi par email.
         </p>
+        <Link
+          to="/"
+          className="group mt-8 inline-flex items-center gap-3 border border-white/20 px-6 py-3.5 font-mono text-[10px] font-bold uppercase tracking-[0.25em] text-white transition-all hover:border-void-accent hover:bg-void-accent"
+        >
+          Retour à l'accueil
+          <ArrowRight size={14} className="transition-transform group-hover:translate-x-1" aria-hidden="true" />
+        </Link>
       </div>
     );
   }
 
-  const inputClass =
-    'w-full bg-black border border-neutral-800 rounded-lg px-3 py-2.5 text-sm text-white placeholder-neutral-600 focus:border-void-accent outline-none transition-colors';
-  const labelClass =
-    'block text-[10px] font-mono uppercase tracking-wider text-neutral-400 mb-1.5';
+  const fieldClass =
+    'w-full border border-neutral-800 bg-black px-4 py-3 text-sm text-white placeholder-neutral-700 outline-none transition-colors focus:border-void-accent';
+  const microLabel =
+    'mb-1.5 block font-mono text-[10px] uppercase tracking-wider text-neutral-500';
+  const sectionHead =
+    'flex items-center gap-3 font-mono text-[10px] font-bold uppercase tracking-[0.3em] text-neutral-400';
 
   return (
-    <div className="max-w-2xl mx-auto px-6 py-16 text-white">
-      <header className="mb-10">
-        <span className="text-void-accent text-xs font-bold tracking-[0.4em] uppercase">
-          Candidature
-        </span>
-        <h1 className="text-4xl md:text-5xl font-black uppercase tracking-tight mt-2">
+    <div className="mx-auto max-w-2xl px-6 py-16">
+      <header className="mb-12 border-b border-white/10 pb-8">
+        <p className="font-mono text-[10px] uppercase tracking-[0.4em] text-void-accent">
+          Candidatures ouvertes
+        </p>
+        <h1 className="mt-3 text-4xl font-black uppercase leading-none tracking-tight text-white md:text-6xl">
           Rejoins-nous
         </h1>
-        <p className="text-neutral-400 text-sm mt-4 leading-relaxed font-light">
+        <p className="mt-5 max-w-md text-sm font-light leading-relaxed text-neutral-400">
           Artiste, beatmaker ou producteur : envoie-nous ta démo. Un lien
-          SoundCloud ou YouTube suffit — l'envoi de fichier est optionnel.
+          SoundCloud ou YouTube suffit — le fichier est optionnel.
         </p>
       </header>
 
-      <form onSubmit={handleSubmit} className="space-y-5" noValidate>
-        {/* Piège à robots — masqué visuellement ET aux lecteurs d'écran. */}
+      <form onSubmit={handleSubmit} className="space-y-14" noValidate>
+        {/* Piège à robots — hors écran ET masqué aux lecteurs d'écran. */}
         <div aria-hidden="true" style={{ position: 'absolute', left: '-9999px' }}>
           <label htmlFor="site-web">Ne pas remplir</label>
           <input
-            id="site-web"
-            type="text"
-            tabIndex={-1}
-            autoComplete="off"
-            value={honeypot}
-            onChange={(e) => setHoneypot(e.target.value)}
+            id="site-web" type="text" tabIndex={-1} autoComplete="off"
+            value={honeypot} onChange={(e) => setHoneypot(e.target.value)}
           />
         </div>
 
-        <div>
-          <label htmlFor="artistName" className={labelClass}>
-            Nom d'artiste <span className="text-void-accent">*</span>
-          </label>
-          <input
-            id="artistName"
-            type="text"
-            required
-            maxLength={80}
-            autoComplete="nickname"
-            value={artistName}
-            onChange={(e) => setArtistName(e.target.value)}
-            className={inputClass}
-          />
-        </div>
+        {/* ─────────── 01 · TOI ─────────── */}
+        <section>
+          <h2 className={sectionHead}>
+            <span className="text-void-accent">01</span> Qui es-tu
+            <span className="h-px flex-1 bg-white/10" />
+          </h2>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label htmlFor="email" className={labelClass}>
-              Email <span className="text-void-accent">*</span>
-            </label>
+          <div className="mt-6 space-y-4">
+            <div>
+              <label htmlFor="artistName" className={microLabel}>
+                Nom d'artiste <span className="text-void-accent">*</span>
+              </label>
+              <input
+                id="artistName" type="text" required maxLength={80} autoComplete="nickname"
+                value={artistName} onChange={(e) => setArtistName(e.target.value)}
+                className={fieldClass}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <label htmlFor="email" className={microLabel}>
+                  Email <span className="text-void-accent">*</span>
+                </label>
+                <input
+                  id="email" type="email" required maxLength={120} autoComplete="email"
+                  value={email} onChange={(e) => setEmail(e.target.value)}
+                  className={fieldClass}
+                />
+              </div>
+              <div>
+                <label htmlFor="phone" className={microLabel}>Téléphone</label>
+                <input
+                  id="phone" type="tel" maxLength={30} autoComplete="tel"
+                  value={phone} onChange={(e) => setPhone(e.target.value)}
+                  className={fieldClass}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label htmlFor="message" className={microLabel}>
+                Présente-toi en quelques lignes <span className="text-void-accent">*</span>
+              </label>
+              <textarea
+                id="message" required rows={6} maxLength={MAX_MESSAGE}
+                value={message} onChange={(e) => setMessage(e.target.value)}
+                className={`${fieldClass} resize-none leading-relaxed`}
+              />
+              <p className="mt-1.5 text-right font-mono text-[10px] text-neutral-700">
+                {message.length} / {MAX_MESSAGE}
+              </p>
+            </div>
+          </div>
+        </section>
+
+        {/* ─────────── 02 · TA MUSIQUE ─────────── */}
+        <section>
+          <h2 className={sectionHead}>
+            <span className="text-void-accent">02</span> Ta musique
+            <span className="h-px flex-1 bg-white/10" />
+          </h2>
+
+          <div className="mt-6 space-y-5">
+            <div>
+              <label htmlFor="linkUrl" className={microLabel}>
+                Lien vers ta musique — SoundCloud, YouTube, Drive
+              </label>
+              <div className="relative">
+                <Link2 size={15} className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-600" aria-hidden="true" />
+                <input
+                  id="linkUrl" type="url" maxLength={300} placeholder="https://"
+                  value={linkUrl} onChange={(e) => setLinkUrl(e.target.value)}
+                  className={`${fieldClass} pl-11 font-mono text-xs`}
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-4">
+              <span className="h-px flex-1 bg-neutral-900" />
+              <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-neutral-700">ou</span>
+              <span className="h-px flex-1 bg-neutral-900" />
+            </div>
+
+            {/* Zone de dépôt : envoyer une démo est le geste central de
+                cette page. Le glisser-déposer évite d'ouvrir un
+                sélecteur de fichiers, et la zone reste cliquable pour
+                qui préfère la méthode classique. */}
+            {file ? (
+              <div className="flex items-center gap-4 border border-void-accent/40 bg-void-accent/5 p-5">
+                <FileAudio size={22} className="shrink-0 text-void-accent" aria-hidden="true" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm text-white">{file.name}</p>
+                  <p className="font-mono text-[10px] uppercase tracking-wider text-neutral-500">
+                    {formatSize(file.size)}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { setFile(null); if (fileInputRef.current) fileInputRef.current.value = ''; }}
+                  className="shrink-0 p-2 text-neutral-600 transition-colors hover:text-red-500"
+                  aria-label="Retirer le fichier"
+                >
+                  <X size={16} aria-hidden="true" />
+                </button>
+              </div>
+            ) : (
+              <label
+                htmlFor="demo-file"
+                onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                onDragLeave={() => setIsDragging(false)}
+                onDrop={handleDrop}
+                className={`flex cursor-pointer flex-col items-center gap-3 border border-dashed px-6 py-12 text-center transition-colors ${
+                  isDragging
+                    ? 'border-void-accent bg-void-accent/10'
+                    : 'border-neutral-800 hover:border-neutral-600'
+                }`}
+              >
+                <Upload size={24} className="text-void-accent" aria-hidden="true" />
+                <span className="font-mono text-xs uppercase tracking-wider text-neutral-300">
+                  Dépose ton fichier ici
+                </span>
+                <span className="font-mono text-[10px] text-neutral-600">
+                  ou clique pour parcourir · audio ou vidéo · 50 Mo max
+                </span>
+              </label>
+            )}
+
             <input
-              id="email"
-              type="email"
-              required
-              maxLength={120}
-              autoComplete="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className={inputClass}
+              id="demo-file" ref={fileInputRef} type="file" accept="audio/*,video/*"
+              onChange={(e) => acceptFile(e.target.files?.[0])}
+              className="sr-only"
             />
           </div>
-          <div>
-            <label htmlFor="phone" className={labelClass}>
-              Téléphone
-            </label>
-            <input
-              id="phone"
-              type="tel"
-              maxLength={30}
-              autoComplete="tel"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              className={inputClass}
-            />
-          </div>
-        </div>
-
-        <div>
-          <label htmlFor="message" className={labelClass}>
-            Présente-toi en quelques lignes <span className="text-void-accent">*</span>
-          </label>
-          <textarea
-            id="message"
-            required
-            rows={5}
-            maxLength={MAX_MESSAGE}
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            className={`${inputClass} resize-none`}
-          />
-          <p className="text-[10px] font-mono text-neutral-600 mt-1 text-right">
-            {message.length} / {MAX_MESSAGE}
-          </p>
-        </div>
-
-        <div>
-          <label htmlFor="linkUrl" className={labelClass}>
-            Lien vers ta musique (SoundCloud, YouTube, Drive…)
-          </label>
-          <div className="relative">
-            <Link2
-              size={15}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-600"
-              aria-hidden="true"
-            />
-            <input
-              id="linkUrl"
-              type="url"
-              maxLength={300}
-              placeholder="https://"
-              value={linkUrl}
-              onChange={(e) => setLinkUrl(e.target.value)}
-              className={`${inputClass} pl-9`}
-            />
-          </div>
-        </div>
-
-        <div>
-          <span className={labelClass}>Ou envoie un fichier (audio / vidéo, 50 Mo max)</span>
-          <label
-            htmlFor="demo-file"
-            className="flex items-center gap-3 px-4 py-3 bg-neutral-950 border border-dashed border-neutral-800 hover:border-void-accent rounded-lg cursor-pointer transition-colors"
-          >
-            <Upload size={16} className="text-void-accent shrink-0" aria-hidden="true" />
-            <span className="text-xs font-mono text-neutral-400 truncate">
-              {file ? file.name : 'Choisir un fichier'}
-            </span>
-          </label>
-          <input
-            id="demo-file"
-            type="file"
-            accept="audio/*,video/*"
-            onChange={handleFileSelect}
-            className="sr-only"
-          />
-          {file && (
-            <button
-              type="button"
-              onClick={() => setFile(null)}
-              className="mt-2 inline-flex items-center gap-1 text-[10px] font-mono text-neutral-500 hover:text-red-400 transition-colors"
-            >
-              <X size={12} aria-hidden="true" /> Retirer le fichier
-            </button>
-          )}
-        </div>
+        </section>
 
         {isSending && file && (
           <div>
             <div
-              className="h-1 bg-neutral-900 rounded-full overflow-hidden"
+              className="h-1 overflow-hidden bg-neutral-900"
               role="progressbar"
               aria-valuenow={progress}
               aria-valuemin={0}
               aria-valuemax={100}
               aria-label="Progression de l'envoi"
             >
-              <div
-                className="h-full bg-void-accent transition-[width] duration-200"
-                style={{ width: `${progress}%` }}
-              />
+              <div className="h-full bg-void-accent transition-[width] duration-200" style={{ width: `${progress}%` }} />
             </div>
-            <p className="text-[10px] font-mono text-neutral-500 mt-1">
+            <p className="mt-2 font-mono text-[10px] uppercase tracking-wider text-neutral-500">
               Envoi du fichier — {progress}%
             </p>
           </div>
         )}
 
         {error && (
-          <p role="alert" className="text-xs font-mono text-red-400">
+          <p role="alert" className="border border-red-900/50 bg-red-950/40 px-5 py-4 font-mono text-xs text-red-400">
             {error}
           </p>
         )}
 
-        <button
-          type="submit"
-          disabled={isSending}
-          className="w-full flex items-center justify-center gap-2 py-3.5 bg-void-accent hover:bg-[#c00404] disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-mono font-bold uppercase tracking-widest rounded-lg transition-colors"
-        >
-          {isSending ? (
-            <>
-              <Loader2 size={16} className="animate-spin" aria-hidden="true" /> Envoi…
-            </>
-          ) : (
-            <>
-              <Send size={16} aria-hidden="true" /> Envoyer ma candidature
-            </>
-          )}
-        </button>
+        <div>
+          <button
+            type="submit"
+            disabled={isSending}
+            className="flex w-full items-center justify-center gap-3 border border-void-accent bg-void-accent py-5 font-mono text-xs font-bold uppercase tracking-[0.3em] text-white transition-all hover:bg-transparent hover:text-void-accent disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isSending ? (
+              <><Loader2 size={16} className="animate-spin" aria-hidden="true" /> Envoi…</>
+            ) : (
+              <><Send size={16} aria-hidden="true" /> Envoyer ma candidature</>
+            )}
+          </button>
 
-        <p className="text-[10px] font-mono text-neutral-600 leading-relaxed">
-          Les informations envoyées ne servent qu'à traiter ta candidature et ne sont
-          transmises à personne.
-        </p>
+          <p className="mt-4 font-mono text-[10px] leading-relaxed text-neutral-600">
+            Les informations envoyées servent uniquement à traiter ta candidature
+            et ne sont transmises à personne.
+          </p>
+        </div>
       </form>
     </div>
   );

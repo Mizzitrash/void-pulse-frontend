@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { db } from '../firebase'; // Ajuste le chemin selon ton projet
+import { db } from '../firebase';
 import { collection, getDocs, doc, updateDoc, runTransaction, setDoc } from 'firebase/firestore';
-import { Shield, Search, UserCheck, Users, Link2, X, Upload } from 'lucide-react';
+import { Shield, Search, UserCheck, Users, Link2, X, Upload, Loader2 } from 'lucide-react';
 import { ARTISTS_DATA } from '../data/artists';
+import { useDocumentMeta } from '../hooks/useDocumentMeta';
+import { getRoleAppearance, visibleRoles } from '../utils/roles';
 
 interface UserProfile {
   uid: string;
@@ -13,7 +15,17 @@ interface UserProfile {
   artistId?: string;
 }
 
-const AVAILABLE_ROLES = ['REALISATEUR', 'COMMUNITY_MANAGER', 'MANAGER', 'ARTISTE', 'ADMIN', 'FONDATEUR'];
+interface ArtistPageOption {
+  id: string;
+  name: string;
+  ownerUid?: string;
+}
+
+// MANAGER manquait à l'appel : le rôle existait dans AuthContext et dans
+// les règles Firestore, mais aucun bouton ne permettait de l'attribuer.
+const AVAILABLE_ROLES = [
+  'REALISATEUR', 'COMMUNITY_MANAGER', 'MANAGER', 'ARTISTE', 'ADMIN', 'FONDATEUR',
+];
 
 const slugify = (str: string) =>
   str
@@ -23,55 +35,14 @@ const slugify = (str: string) =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/(^-|-$)/g, '');
 
-// Fonction utilitaire pour attribuer une couleur spécifique à chaque rôle
-const getRoleStyle = (role: string, isActive: boolean = true) => {
-  const upperRole = role.toUpperCase();
-
-  if (!isActive) {
-    return 'bg-neutral-900 border border-neutral-800 text-neutral-400 hover:border-neutral-700 hover:text-white';
-  }
-
-  switch (upperRole) {
-    case 'FONDATEUR':
-      return 'bg-amber-950/80 border border-amber-600/60 text-amber-400 shadow-[0_0_10px_rgba(245,158,11,0.2)]';
-    case 'ADMIN':
-      return 'bg-[#A00303]/30 border border-[#A00303] text-red-400 shadow-[0_0_10px_rgba(160,3,3,0.4)]';
-    case 'REALISATEUR':
-      return 'bg-blue-950/80 border border-blue-600/60 text-blue-400 shadow-[0_0_10px_rgba(59,130,246,0.2)]';
-    case 'COMMUNITY_MANAGER':
-      return 'bg-emerald-950/80 border border-emerald-600/60 text-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.2)]';
-    case 'ARTISTE':
-      return 'bg-purple-950/80 border border-purple-600/60 text-purple-400 shadow-[0_0_10px_rgba(168,85,247,0.2)]';
-    case 'MANAGER':
-      return 'bg-cyan-950/80 border border-cyan-600/60 text-cyan-400 shadow-[0_0_10px_rgba(34,211,238,0.2)]';
-    case 'MEMBRE':
-    case 'USER':
-    default:
-      return 'bg-neutral-900 border border-neutral-700 text-neutral-300';
-  }
-};
-
-interface ArtistPageOption {
-  id: string;
-  name: string;
-  ownerUid?: string;
-}
-
 export const AdminDashboard: React.FC = () => {
-  const [users, setUsers] = useState<UserProfile[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [searchTerm, setSearchTerm] = useState<string>('');
+  useDocumentMeta({ title: 'Administration' });
 
-  // Liste des pages artistes existantes, chargée une fois au montage.
-  // Sert à proposer un choix explicite dans la modale plutôt que de
-  // deviner un identifiant de page à partir du pseudo (ce qui avait créé
-  // un doublon : une page "88" générée alors que la vraie page était "7").
+  const [users, setUsers] = useState<UserProfile[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
   const [artistPages, setArtistPages] = useState<ArtistPageOption[]>([]);
 
-  // --- État du mini-formulaire de création/liaison de page artiste ---
-  // Déclenché quand on ACTIVE le rôle ARTISTE pour un utilisateur qui n'a
-  // pas encore d'artistId. Tant que ce n'est pas confirmé, le rôle n'est
-  // pas encore écrit en base (on attend la transaction combinée).
   const [linkingUser, setLinkingUser] = useState<UserProfile | null>(null);
   const [linkMode, setLinkMode] = useState<'existing' | 'new'>('new');
   const [selectedExistingSlug, setSelectedExistingSlug] = useState('');
@@ -80,26 +51,29 @@ export const AdminDashboard: React.FC = () => {
   const [linkError, setLinkError] = useState<string | null>(null);
   const [isLinking, setIsLinking] = useState(false);
 
-  // Charger la liste des utilisateurs et des pages artistes depuis Firestore
+  const [isImporting, setIsImporting] = useState(false);
+  const [importResult, setImportResult] = useState<string | null>(null);
+  const [rowBusy, setRowBusy] = useState<string | null>(null);
+
   useEffect(() => {
     const fetchUsers = async () => {
       try {
-        const querySnapshot = await getDocs(collection(db, 'users'));
-        const usersList: UserProfile[] = [];
-        querySnapshot.forEach((docSnap) => {
-          const data = docSnap.data();
-          usersList.push({
-            uid: docSnap.id,
-            username: data.username || 'Sans pseudo',
-            email: data.email || 'Email masqué',
-            roles: data.roles || ['USER'],
-            avatarUrl: data.avatarUrl || '',
-            artistId: data.artistId || undefined,
-          });
-        });
-        setUsers(usersList);
+        const snapshot = await getDocs(collection(db, 'users'));
+        setUsers(
+          snapshot.docs.map((d) => {
+            const data = d.data();
+            return {
+              uid: d.id,
+              username: data.username || 'Sans pseudo',
+              email: data.email || 'Email masqué',
+              roles: data.roles || ['USER'],
+              avatarUrl: data.avatarUrl || '',
+              artistId: data.artistId || undefined,
+            };
+          })
+        );
       } catch (error) {
-        console.error("Erreur lors du chargement des utilisateurs :", error);
+        console.error('Erreur lors du chargement des utilisateurs :', error);
       } finally {
         setLoading(false);
       }
@@ -108,15 +82,12 @@ export const AdminDashboard: React.FC = () => {
     const fetchArtistPages = async () => {
       try {
         const snap = await getDocs(collection(db, 'artists'));
-        const pages: ArtistPageOption[] = snap.docs.map((d) => ({
-          id: d.id,
-          name: d.data().name || d.id,
-          ownerUid: d.data().ownerUid || undefined,
-        }));
-        pages.sort((a, b) => a.name.localeCompare(b.name));
+        const pages = snap.docs
+          .map((d) => ({ id: d.id, name: d.data().name || d.id, ownerUid: d.data().ownerUid || undefined }))
+          .sort((a, b) => a.name.localeCompare(b.name));
         setArtistPages(pages);
       } catch (error) {
-        console.error("Erreur lors du chargement des pages artistes :", error);
+        console.error('Erreur lors du chargement des pages artistes :', error);
       }
     };
 
@@ -124,21 +95,16 @@ export const AdminDashboard: React.FC = () => {
     fetchArtistPages();
   }, []);
 
-  // Recherche une page dont le nom ressemble au pseudo de l'utilisateur,
-  // pour pré-sélectionner intelligemment le bon mode dans la modale.
   const findLikelyMatch = (username: string): ArtistPageOption | undefined => {
-    const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
+    const norm = (s: string) =>
+      s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
     const target = norm(username);
     if (!target) return undefined;
     return artistPages.find((p) => norm(p.name) === target);
   };
 
-  const [isImporting, setIsImporting] = useState(false);
-  const [importResult, setImportResult] = useState<string | null>(null);
-
-  // Importe les artistes de data/artists.ts vers Firestore, avec leurs IDs
-  // exacts ('1' à '7'), en ne touchant PAS aux pages qui existent déjà
-  // (pour ne jamais écraser un contenu déjà édité par un artiste).
+  // Crée dans Firestore les pages qui n'existent encore que dans le fichier
+  // statique, sans jamais toucher à celles déjà présentes.
   const handleImportStaticArtists = async () => {
     setIsImporting(true);
     setImportResult(null);
@@ -147,7 +113,7 @@ export const AdminDashboard: React.FC = () => {
       const toImport = ARTISTS_DATA.filter((a) => !existingIds.has(a.id));
 
       if (toImport.length === 0) {
-        setImportResult("Tous les artistes statiques existent déjà dans Firestore.");
+        setImportResult('Tous les artistes statiques existent déjà dans Firestore.');
         return;
       }
 
@@ -168,12 +134,12 @@ export const AdminDashboard: React.FC = () => {
         )
       );
 
-      setArtistPages((prev) => [
-        ...prev,
-        ...toImport.map((a) => ({ id: a.id, name: a.name })),
-      ].sort((a, b) => a.name.localeCompare(b.name)));
-
-      setImportResult(`${toImport.length} page(s) importée(s) avec succès : ${toImport.map((a) => a.name).join(', ')}.`);
+      setArtistPages((prev) =>
+        [...prev, ...toImport.map((a) => ({ id: a.id, name: a.name }))].sort((a, b) =>
+          a.name.localeCompare(b.name)
+        )
+      );
+      setImportResult(`${toImport.length} page(s) importée(s) : ${toImport.map((a) => a.name).join(', ')}.`);
     } catch (error) {
       console.error(error);
       setImportResult("Échec de l'import. Vérifie tes droits admin et réessaie.");
@@ -182,25 +148,18 @@ export const AdminDashboard: React.FC = () => {
     }
   };
 
-  // Basculer un rôle pour un utilisateur donné
   const toggleRole = async (uid: string, currentRoles: string[], roleToToggle: string) => {
     const alreadyHasRole = currentRoles.includes(roleToToggle);
 
-    // Cas particulier : on ACTIVE le rôle ARTISTE et l'utilisateur n'a pas
-    // encore de page liée -> on ouvre le mini-formulaire au lieu d'écrire
-    // directement, pour créer/lier la page dans la même opération.
+    // Activer ARTISTE sans page liée ouvre le formulaire de liaison plutôt
+    // que d'écrire directement : rôle et page sont créés d'un seul geste.
     if (!alreadyHasRole && roleToToggle === 'ARTISTE') {
       const user = users.find((u) => u.uid === uid);
       if (user && !user.artistId) {
         const match = findLikelyMatch(user.username || '');
         setLinkingUser(user);
-        if (match) {
-          setLinkMode('existing');
-          setSelectedExistingSlug(match.id);
-        } else {
-          setLinkMode('new');
-          setSelectedExistingSlug('');
-        }
+        setLinkMode(match ? 'existing' : 'new');
+        setSelectedExistingSlug(match ? match.id : '');
         setArtistNameInput(user.username || '');
         setArtistSlugInput(slugify(user.username || ''));
         setLinkError(null);
@@ -208,37 +167,31 @@ export const AdminDashboard: React.FC = () => {
       }
     }
 
-    let updatedRoles: string[];
-    if (alreadyHasRole) {
-      updatedRoles = currentRoles.filter(r => r !== roleToToggle);
-    } else {
-      updatedRoles = [...currentRoles, roleToToggle];
-    }
+    const updatedRoles = alreadyHasRole
+      ? currentRoles.filter((r) => r !== roleToToggle)
+      : [...currentRoles, roleToToggle];
 
+    setRowBusy(uid);
     try {
-      const userRef = doc(db, 'users', uid);
-      await updateDoc(userRef, { roles: updatedRoles });
-
-      setUsers(users.map(u => u.uid === uid ? { ...u, roles: updatedRoles } : u));
+      await updateDoc(doc(db, 'users', uid), { roles: updatedRoles });
+      setUsers((prev) => prev.map((u) => (u.uid === uid ? { ...u, roles: updatedRoles } : u)));
     } catch (error) {
-      console.error("Erreur lors de la mise à jour des rôles :", error);
-      alert("Erreur lors de la mise à jour des rôles.");
+      console.error('Erreur lors de la mise à jour des rôles :', error);
+      alert('Erreur lors de la mise à jour des rôles.');
+    } finally {
+      setRowBusy(null);
     }
   };
 
-  // Crée (mode "new") ou lie à une page existante choisie explicitement
-  // (mode "existing") + attribue le rôle ARTISTE, en une seule transaction
-  // pour ne jamais désynchroniser page <-> compte.
   const handleConfirmArtistLink = async () => {
     if (!linkingUser) return;
     setLinkError(null);
 
     if (linkMode === 'existing') {
       if (!selectedExistingSlug) {
-        setLinkError("Sélectionne une page existante dans la liste.");
+        setLinkError('Sélectionne une page existante dans la liste.');
         return;
       }
-
       setIsLinking(true);
       try {
         const artistRef = doc(db, 'artists', selectedExistingSlug);
@@ -250,9 +203,6 @@ export const AdminDashboard: React.FC = () => {
             throw new Error("Cette page n'existe plus. Recharge la liste et réessaie.");
           }
           const updatedRoles = Array.from(new Set([...linkingUser.roles, 'ARTISTE']));
-          // On lie le compte SANS toucher au contenu de la page, et on
-          // renseigne aussi ownerUid sur la page pour une vérification
-          // côté page-artiste future (cohérent avec ArtistProfile.ownerUid).
           tx.update(userRef, { roles: updatedRoles, artistId: selectedExistingSlug });
           tx.update(artistRef, { ownerUid: linkingUser.uid });
         });
@@ -274,19 +224,11 @@ export const AdminDashboard: React.FC = () => {
       return;
     }
 
-    // Mode "new" : création d'une page inédite
     const finalSlug = (artistSlugInput.trim() || slugify(artistNameInput)).trim();
-    if (!finalSlug) {
-      setLinkError("Identifiant de page invalide.");
-      return;
-    }
-    if (!artistNameInput.trim()) {
-      setLinkError("Le nom d'artiste est requis.");
-      return;
-    }
+    if (!finalSlug) return setLinkError('Identifiant de page invalide.');
+    if (!artistNameInput.trim()) return setLinkError("Le nom d'artiste est requis.");
     if (artistPages.some((p) => p.id === finalSlug)) {
-      setLinkError(`Une page "${finalSlug}" existe déjà — utilise plutôt "Lier à une page existante".`);
-      return;
+      return setLinkError(`Une page "${finalSlug}" existe déjà — utilise "Lier une page existante".`);
     }
 
     setIsLinking(true);
@@ -302,14 +244,8 @@ export const AdminDashboard: React.FC = () => {
         const updatedRoles = Array.from(new Set([...linkingUser.roles, 'ARTISTE']));
         tx.set(artistRef, {
           name: artistNameInput.trim(),
-          genre: '',
-          bio: '',
-          image: '',
-          spotifyUrl: '',
-          youtubeUrl: '',
-          instagramUrl: '',
-          tiktokUrl: '',
-          youtubeClip: '',
+          genre: '', bio: '', image: '',
+          spotifyUrl: '', youtubeUrl: '', instagramUrl: '', tiktokUrl: '', youtubeClip: '',
           ownerUid: linkingUser.uid,
           createdAt: new Date().toISOString(),
         });
@@ -333,306 +269,290 @@ export const AdminDashboard: React.FC = () => {
     }
   };
 
-  // Filtrer les utilisateurs par pseudo ou email
-  const filteredUsers = users.filter(user => 
-    user.username?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.email?.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredUsers = users.filter(
+    (u) =>
+      u.username?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      u.email?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Séparer les utilisateurs spéciaux des membres standards
-  const specialUsers = filteredUsers.filter(user => 
-    user.roles.some(role => role.toUpperCase() !== 'USER' && role.toUpperCase() !== 'MEMBRE')
-  );
+  const hasSpecialRole = (u: UserProfile) =>
+    u.roles.some((r) => !['USER', 'MEMBRE'].includes(r.toUpperCase()));
 
-  const standardMembers = filteredUsers.filter(user => 
-    !user.roles.some(role => role.toUpperCase() !== 'USER' && role.toUpperCase() !== 'MEMBRE')
-  );
+  const specialUsers = filteredUsers.filter(hasSpecialRole);
+  const standardMembers = filteredUsers.filter((u) => !hasSpecialRole(u));
 
   if (loading) {
     return (
-      <div className="min-h-[60vh] flex items-center justify-center text-neutral-500 font-mono text-xs uppercase tracking-widest animate-pulse">
-        Chargement des accès...
+      <div className="flex min-h-[60vh] items-center justify-center gap-2 font-mono text-xs uppercase tracking-widest text-neutral-500">
+        <Loader2 className="animate-spin" size={16} aria-hidden="true" /> Chargement des accès
       </div>
     );
   }
 
-  const renderTableRows = (userList: UserProfile[]) => {
-    return userList.map((user) => (
-      <tr key={user.uid} className="hover:bg-neutral-900/30 transition-colors">
-        <td className="p-4 flex items-center gap-3">
+  // Cartes plutôt que tableau : les trois colonnes débordaient sur mobile
+  // et imposaient un défilement horizontal pour atteindre les boutons.
+  const renderUserCard = (user: UserProfile) => (
+    <li key={user.uid} className="border border-neutral-900 bg-neutral-950 p-5">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="flex min-w-0 items-center gap-3">
           {user.avatarUrl ? (
-            <img src={user.avatarUrl} alt="" className="w-8 h-8 rounded-full object-cover border border-neutral-800" />
+            <img src={user.avatarUrl} alt="" className="h-11 w-11 shrink-0 rounded-full border border-neutral-800 object-cover" />
           ) : (
-            <div className="w-8 h-8 rounded-full bg-neutral-900 border border-neutral-800 flex items-center justify-center text-neutral-400 font-bold">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-neutral-800 bg-neutral-900 font-bold text-neutral-500">
               {user.username?.charAt(0).toUpperCase()}
             </div>
           )}
-          <div>
-            <div className="font-bold text-white uppercase">{user.username}</div>
-            <div className="text-[10px] text-neutral-500">{user.email}</div>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-black uppercase tracking-tight text-white">
+              {user.username}
+            </p>
+            <p className="truncate font-mono text-[10px] text-neutral-600">{user.email}</p>
             {user.artistId && (
-              <div className="text-[10px] text-emerald-400 flex items-center gap-1 mt-0.5">
-                <Link2 size={10} /> page "{user.artistId}"
-              </div>
+              <p className="mt-1 flex items-center gap-1 font-mono text-[10px] text-emerald-500">
+                <Link2 size={10} aria-hidden="true" /> page « {user.artistId} »
+              </p>
             )}
           </div>
-        </td>
-
-        <td className="p-4">
-          <div className="flex flex-wrap gap-1.5">
-            {user.roles
-              .filter(role => user.roles.length === 1 || role.toUpperCase() !== 'USER')
-              .map((role) => {
-                const displayRole = role.toUpperCase() === 'USER' ? 'MEMBRE' : role;
-                return (
-                  <span 
-                    key={role}
-                    className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${getRoleStyle(role, true)}`}
-                  >
-                    {displayRole}
-                  </span>
-                );
-              })}
-          </div>
-        </td>
-
-        <td className="p-4">
-          <div className="flex flex-wrap gap-2">
-            {AVAILABLE_ROLES.map((role) => {
-              const hasRole = user.roles.includes(role);
-              return (
-                <button
-                  key={role}
-                  onClick={() => toggleRole(user.uid, user.roles, role)}
-                  className={`px-2.5 py-1 rounded text-[10px] font-bold uppercase transition-all cursor-pointer ${
-                    hasRole
-                      ? getRoleStyle(role, true)
-                      : getRoleStyle(role, false)
-                  }`}
-                >
-                  {role} {hasRole ? '✓' : '+'}
-                </button>
-              );
-            })}
-          </div>
-        </td>
-      </tr>
-    ));
-  };
-
-  return (
-    <div className="max-w-6xl mx-auto px-4 py-12 space-y-12">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-black uppercase tracking-tight text-white flex items-center gap-3">
-            <Shield className="text-void-accent" size={28} />
-            <span>Gestion des Rôles & Accès</span>
-          </h1>
-          <p className="text-neutral-400 text-xs font-mono uppercase mt-1">
-            Panneau d'administration centralisé VØID PULSE
-          </p>
         </div>
 
-        {/* Barre de recherche + import */}
-        <div className="flex flex-col md:items-end gap-2">
-          <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-1.5">
+          {visibleRoles(user.roles).map((role) => {
+            const { className, label } = getRoleAppearance(role);
+            return (
+              <span key={role} className={`px-2 py-0.5 text-[10px] font-bold uppercase ${className}`}>
+                {label}
+              </span>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-neutral-900 pt-4">
+        {rowBusy === user.uid && <Loader2 size={13} className="animate-spin text-neutral-600" aria-hidden="true" />}
+        {AVAILABLE_ROLES.map((role) => {
+          const hasRole = user.roles.includes(role);
+          const { className, label } = getRoleAppearance(role);
+          return (
+            <button
+              key={role}
+              onClick={() => toggleRole(user.uid, user.roles, role)}
+              disabled={rowBusy === user.uid}
+              aria-pressed={hasRole}
+              className={`px-2.5 py-1 text-[10px] font-bold uppercase transition-all disabled:opacity-40 ${
+                hasRole
+                  ? className
+                  : 'border border-neutral-800 bg-neutral-900 text-neutral-500 hover:border-neutral-600 hover:text-white'
+              }`}
+            >
+              {label} {hasRole ? '✓' : '+'}
+            </button>
+          );
+        })}
+      </div>
+    </li>
+  );
+
+  const fieldClass =
+    'w-full border border-neutral-800 bg-black px-3 py-2.5 font-mono text-xs text-white outline-none focus:border-void-accent';
+
+  return (
+    <div className="mx-auto max-w-5xl px-6 py-16">
+      <header className="mb-10 flex flex-col justify-between gap-6 border-b border-white/10 pb-8 md:flex-row md:items-end">
+        <div>
+          <p className="font-mono text-[10px] uppercase tracking-[0.4em] text-void-accent">
+            Panneau d'administration
+          </p>
+          <h1 className="mt-3 flex items-center gap-3 text-4xl font-black uppercase leading-none tracking-tight text-white md:text-5xl">
+            <Shield className="text-void-accent" size={30} aria-hidden="true" />
+            Rôles &amp; accès
+          </h1>
+        </div>
+
+        <div className="flex flex-col items-stretch gap-3 md:items-end">
+          <div className="flex flex-wrap items-center gap-3">
             <button
               onClick={handleImportStaticArtists}
               disabled={isImporting}
-              className="flex items-center gap-2 px-4 py-2 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 rounded-xl text-[10px] font-mono font-bold uppercase text-neutral-300 hover:text-white transition-all disabled:opacity-50"
-              title="Crée dans Firestore les pages artistes qui n'existent encore que dans data/artists.ts"
+              className="flex items-center gap-2 border border-neutral-800 px-4 py-2.5 font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-neutral-300 transition-colors hover:border-neutral-600 hover:text-white disabled:opacity-50"
+              title="Crée dans Firestore les pages artistes qui n'existent que dans data/artists.ts"
             >
-              <Upload size={14} />
-              {isImporting ? 'Import...' : 'Importer les artistes statiques'}
+              {isImporting ? <Loader2 size={13} className="animate-spin" aria-hidden="true" /> : <Upload size={13} aria-hidden="true" />}
+              Importer les statiques
             </button>
 
             <div className="relative">
-              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500" />
+              <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-600" aria-hidden="true" />
               <input
-                type="text"
-                placeholder="Rechercher un utilisateur..."
+                type="search"
+                placeholder="Rechercher…"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="bg-neutral-900 border border-neutral-800 rounded-xl pl-9 pr-4 py-2 text-xs font-mono text-white focus:outline-none focus:border-void-accent w-full md:w-64 transition-colors"
+                aria-label="Rechercher un utilisateur"
+                className="w-full border border-neutral-800 bg-black py-2.5 pl-10 pr-4 font-mono text-xs text-white outline-none transition-colors focus:border-void-accent md:w-56"
               />
             </div>
           </div>
           {importResult && (
-            <p className="text-[10px] font-mono text-emerald-400 max-w-md text-right">{importResult}</p>
+            <p className="max-w-md font-mono text-[10px] text-emerald-500 md:text-right">{importResult}</p>
           )}
         </div>
-      </div>
+      </header>
 
-      {/* SECTION 1 : RÔLES SPÉCIAUX / ÉQUIPE */}
-      <div className="space-y-4">
-        <h2 className="text-sm font-mono font-bold uppercase tracking-wider text-white flex items-center gap-2">
-          <UserCheck size={16} className="text-void-accent" /> Équipe & Rôles Spéciaux ({specialUsers.length})
+      <section className="mb-14">
+        <h2 className="flex items-center gap-3 font-mono text-[10px] font-bold uppercase tracking-[0.3em] text-neutral-400">
+          <UserCheck size={13} className="text-void-accent" aria-hidden="true" />
+          Équipe &amp; rôles spéciaux
+          <span className="h-px flex-1 bg-white/10" />
+          <span className="shrink-0 text-neutral-600">{specialUsers.length}</span>
         </h2>
 
-        <div className="bg-neutral-950 border border-neutral-900 rounded-2xl overflow-hidden shadow-2xl">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="border-b border-neutral-900 text-[10px] font-mono text-neutral-500 uppercase tracking-widest bg-neutral-900/40">
-                  <th className="p-4">Utilisateur</th>
-                  <th className="p-4">Rôles Actuels</th>
-                  <th className="p-4">Attribution des Rôles</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-neutral-900 text-xs font-mono">
-                {specialUsers.length === 0 ? (
-                  <tr>
-                    <td colSpan={3} className="p-6 text-center text-neutral-500 uppercase">
-                      Aucun utilisateur avec un rôle spécial trouvé.
-                    </td>
-                  </tr>
-                ) : (
-                  renderTableRows(specialUsers)
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
+        {specialUsers.length === 0 ? (
+          <p className="mt-6 border border-dashed border-neutral-900 py-12 text-center font-mono text-xs text-neutral-600">
+            Aucun utilisateur avec un rôle spécial.
+          </p>
+        ) : (
+          <ul className="mt-6 space-y-3">{specialUsers.map(renderUserCard)}</ul>
+        )}
+      </section>
 
-      {/* SECTION 2 : MEMBRES STANDARDS */}
-      <div className="space-y-4">
-        <h2 className="text-sm font-mono font-bold uppercase tracking-wider text-white flex items-center gap-2">
-          <Users size={16} className="text-neutral-500" /> Membres Standards ({standardMembers.length})
+      <section>
+        <h2 className="flex items-center gap-3 font-mono text-[10px] font-bold uppercase tracking-[0.3em] text-neutral-400">
+          <Users size={13} className="text-neutral-600" aria-hidden="true" />
+          Membres
+          <span className="h-px flex-1 bg-white/10" />
+          <span className="shrink-0 text-neutral-600">{standardMembers.length}</span>
         </h2>
 
-        <div className="bg-neutral-950 border border-neutral-900 rounded-2xl overflow-hidden shadow-2xl">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="border-b border-neutral-900 text-[10px] font-mono text-neutral-500 uppercase tracking-widest bg-neutral-900/40">
-                  <th className="p-4">Utilisateur</th>
-                  <th className="p-4">Rôles Actuels</th>
-                  <th className="p-4">Attribution des Rôles</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-neutral-900 text-xs font-mono">
-                {standardMembers.length === 0 ? (
-                  <tr>
-                    <td colSpan={3} className="p-6 text-center text-neutral-500 uppercase">
-                      Aucun membre standard trouvé.
-                    </td>
-                  </tr>
-                ) : (
-                  renderTableRows(standardMembers)
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
+        {standardMembers.length === 0 ? (
+          <p className="mt-6 border border-dashed border-neutral-900 py-12 text-center font-mono text-xs text-neutral-600">
+            Aucun membre standard.
+          </p>
+        ) : (
+          <ul className="mt-6 space-y-3">{standardMembers.map(renderUserCard)}</ul>
+        )}
+      </section>
 
-      {/* MODALE : création/liaison de page artiste, déclenchée en cochant ARTISTE */}
+      {/* ─────────── LIAISON PAGE ARTISTE ─────────── */}
       {linkingUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <div className="w-full max-w-md bg-neutral-950 border border-void-accent/40 rounded-2xl p-6 space-y-4 shadow-2xl">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-mono font-bold uppercase tracking-wider text-white">
-                Lier une page artiste
-              </h3>
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Lier une page artiste"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm"
+          onClick={() => !isLinking && setLinkingUser(null)}
+        >
+          <div
+            className="w-full max-w-md space-y-5 border border-void-accent/40 bg-neutral-950 p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-void-accent">
+                  Liaison
+                </p>
+                <h2 className="mt-1.5 text-xl font-black uppercase tracking-tight text-white">
+                  {linkingUser.username}
+                </h2>
+              </div>
               <button
                 onClick={() => !isLinking && setLinkingUser(null)}
-                className="text-neutral-500 hover:text-white"
+                className="text-neutral-600 transition-colors hover:text-white"
+                aria-label="Fermer"
               >
-                <X size={18} />
+                <X size={18} aria-hidden="true" />
               </button>
             </div>
 
-            <p className="text-xs font-mono text-neutral-400">
-              <strong className="text-white">{linkingUser.username}</strong> n'a pas encore de page artiste liée.
+            <p className="font-mono text-[10px] leading-relaxed text-neutral-500">
+              Ce membre n'a pas encore de page artiste liée.
             </p>
 
-            {/* Choix explicite du mode, pour éviter de deviner un identifiant
-                et créer un doublon d'une page qui existe déjà. */}
             <div className="flex gap-2">
               <button
                 type="button"
                 onClick={() => setLinkMode('existing')}
-                className={`flex-1 py-2 rounded text-[10px] font-mono font-bold uppercase transition-all ${
+                className={`flex-1 py-2.5 font-mono text-[10px] font-bold uppercase tracking-[0.1em] transition-all ${
                   linkMode === 'existing'
                     ? 'bg-void-accent text-white'
-                    : 'bg-neutral-900 text-neutral-400 border border-neutral-800'
+                    : 'border border-neutral-800 text-neutral-400 hover:text-white'
                 }`}
               >
-                Lier une page existante
+                Page existante
               </button>
               <button
                 type="button"
                 onClick={() => setLinkMode('new')}
-                className={`flex-1 py-2 rounded text-[10px] font-mono font-bold uppercase transition-all ${
+                className={`flex-1 py-2.5 font-mono text-[10px] font-bold uppercase tracking-[0.1em] transition-all ${
                   linkMode === 'new'
                     ? 'bg-void-accent text-white'
-                    : 'bg-neutral-900 text-neutral-400 border border-neutral-800'
+                    : 'border border-neutral-800 text-neutral-400 hover:text-white'
                 }`}
               >
-                Créer une nouvelle page
+                Nouvelle page
               </button>
             </div>
 
             {linkMode === 'existing' ? (
-              <div className="space-y-2">
-                <label className="text-[10px] font-mono text-neutral-500 uppercase block">
-                  Page artiste existante
+              <div>
+                <label htmlFor="l-existing" className="mb-1.5 block font-mono text-[10px] uppercase tracking-wider text-neutral-500">
+                  Page artiste
                 </label>
                 <select
+                  id="l-existing"
                   value={selectedExistingSlug}
                   onChange={(e) => setSelectedExistingSlug(e.target.value)}
-                  className="w-full bg-black border border-neutral-800 px-3 py-2 rounded text-xs text-white focus:border-void-accent outline-none"
+                  className={fieldClass}
                 >
-                  <option value="">-- Choisir une page --</option>
+                  <option value="">— Choisir une page —</option>
                   {artistPages.map((p) => (
                     <option key={p.id} value={p.id}>
-                      {p.name} (id: {p.id}){p.ownerUid ? ' — déjà liée à un autre compte' : ''}
+                      {p.name} (id : {p.id}){p.ownerUid ? ' — déjà liée' : ''}
                     </option>
                   ))}
                 </select>
                 {artistPages.length === 0 && (
-                  <p className="text-[10px] text-neutral-500 font-mono">Aucune page artiste trouvée.</p>
+                  <p className="mt-2 font-mono text-[10px] text-neutral-600">
+                    Aucune page artiste trouvée.
+                  </p>
                 )}
               </div>
             ) : (
-              <div className="space-y-2">
-                <label className="text-[10px] font-mono text-neutral-500 uppercase block">
-                  Nom d'artiste
-                </label>
-                <input
-                  type="text"
-                  value={artistNameInput}
-                  onChange={(e) => setArtistNameInput(e.target.value)}
-                  className="w-full bg-black border border-neutral-800 px-3 py-2 rounded text-xs text-white focus:border-void-accent outline-none"
-                />
-
-                <label className="text-[10px] font-mono text-neutral-500 uppercase block">
-                  Identifiant de page (ex: nsk)
-                </label>
-                <input
-                  type="text"
-                  value={artistSlugInput}
-                  onChange={(e) => setArtistSlugInput(e.target.value)}
-                  className="w-full bg-black border border-neutral-800 px-3 py-2 rounded text-xs text-white focus:border-void-accent outline-none"
-                />
+              <div className="space-y-3">
+                <div>
+                  <label htmlFor="l-name" className="mb-1.5 block font-mono text-[10px] uppercase tracking-wider text-neutral-500">
+                    Nom d'artiste
+                  </label>
+                  <input id="l-name" type="text" value={artistNameInput}
+                    onChange={(e) => setArtistNameInput(e.target.value)} className={fieldClass} />
+                </div>
+                <div>
+                  <label htmlFor="l-slug" className="mb-1.5 block font-mono text-[10px] uppercase tracking-wider text-neutral-500">
+                    Identifiant de page
+                  </label>
+                  <input id="l-slug" type="text" value={artistSlugInput}
+                    onChange={(e) => setArtistSlugInput(e.target.value)}
+                    placeholder="nsk" className={fieldClass} />
+                </div>
               </div>
             )}
 
-            {linkError && <p className="text-xs text-red-400 font-mono">{linkError}</p>}
+            {linkError && (
+              <p role="alert" className="font-mono text-xs text-red-400">{linkError}</p>
+            )}
 
-            <div className="flex gap-2 pt-2">
+            <div className="flex gap-2 pt-1">
               <button
                 onClick={handleConfirmArtistLink}
                 disabled={isLinking}
-                className="flex-1 py-2.5 bg-void-accent hover:bg-[#c00404] disabled:opacity-50 text-white text-xs font-mono font-bold uppercase rounded-lg transition-all"
+                className="flex flex-1 items-center justify-center gap-2 border border-void-accent bg-void-accent py-3 font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-white transition-all hover:bg-transparent hover:text-void-accent disabled:opacity-50"
               >
-                {isLinking ? 'Liaison en cours...' : 'Confirmer'}
+                {isLinking && <Loader2 size={12} className="animate-spin" aria-hidden="true" />}
+                Confirmer
               </button>
               <button
                 onClick={() => setLinkingUser(null)}
                 disabled={isLinking}
-                className="px-4 py-2.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-xs font-mono uppercase rounded-lg transition-all"
+                className="border border-neutral-800 px-5 py-3 font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-neutral-400 transition-colors hover:text-white"
               >
                 Annuler
               </button>
