@@ -1,12 +1,62 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, useReducedMotion } from 'framer-motion';
+import { collection, getDocs } from 'firebase/firestore';
+import { db } from '../firebase';
 import { ARTISTS_DATA } from '../data/artists';
+import type { Artist } from '../types/artist';
 import { ArrowUpRight } from 'lucide-react';
 
 export const ArtistSection: React.FC = () => {
   const navigate = useNavigate();
   const reduceMotion = useReducedMotion();
+
+  // On démarre sur les données statiques plutôt que sur un écran de
+  // chargement : le roster est en haut de la page d'accueil, il doit
+  // s'afficher immédiatement. Les données Firestore le remplacent ensuite,
+  // sans que le visiteur voie jamais de vide.
+  const [artists, setArtists] = useState<Artist[]>(ARTISTS_DATA);
+
+  useEffect(() => {
+    const sync = async () => {
+      try {
+        const snap = await getDocs(collection(db, 'artists'));
+        if (snap.empty) return;
+
+        const fromDb = new Map<string, Artist>();
+        snap.docs.forEach((d) => {
+          fromDb.set(d.id, { id: d.id, ...(d.data() as Omit<Artist, 'id'>) });
+        });
+
+        // Les artistes du fichier statique gardent leur ordre — c'est
+        // l'ordre d'affichage voulu — mais leur contenu vient de Firestore
+        // dès qu'une fiche y existe. Sans cette fusion, une modification
+        // faite depuis la page artiste restait invisible ici.
+        const merged: Artist[] = ARTISTS_DATA.map((staticArtist) => {
+          const live = fromDb.get(staticArtist.id);
+          fromDb.delete(staticArtist.id);
+          // Le fichier statique conserve des champs absents de Firestore
+          // (notamment `audio`) : on superpose plutôt que de remplacer.
+          return live ? { ...staticArtist, ...live } : staticArtist;
+        });
+
+        // Les pages créées depuis l'admin n'existent pas dans le fichier
+        // statique : sans cet ajout, un artiste signé après coup
+        // n'apparaissait jamais dans le roster.
+        const newcomers = Array.from(fromDb.values()).sort((a, b) =>
+          (a.name || '').localeCompare(b.name || '')
+        );
+
+        setArtists([...merged, ...newcomers]);
+      } catch (error) {
+        // En cas d'échec réseau, on reste sur les données statiques
+        // affichées : mieux vaut un roster figé qu'une section vide.
+        console.error('Synchronisation du roster :', error);
+      }
+    };
+
+    sync();
+  }, []);
 
   const fadeUp = {
     hidden: { opacity: 0, y: reduceMotion ? 0 : 20 },
@@ -30,11 +80,6 @@ export const ArtistSection: React.FC = () => {
         </p>
       </div>
 
-      {/* Grille plutôt que carrousel : un carrousel n'affichait qu'un
-          artiste à la fois, ce qui obligeait à cliquer sept fois pour voir
-          le roster complet — l'inverse de ce qu'une page de label doit
-          faire. Le premier artiste occupe deux colonnes pour donner un
-          rythme éditorial au lieu d'un damier régulier. */}
       <motion.ul
         initial="hidden"
         whileInView="visible"
@@ -42,7 +87,7 @@ export const ArtistSection: React.FC = () => {
         transition={{ staggerChildren: reduceMotion ? 0 : 0.08 }}
         className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
       >
-        {ARTISTS_DATA.map((artist, index) => {
+        {artists.map((artist, index) => {
           const isFeature = index === 0;
 
           return (
@@ -58,12 +103,16 @@ export const ArtistSection: React.FC = () => {
                 aria-label={`Voir le profil de ${artist.name}`}
               >
                 <div className={`relative w-full overflow-hidden bg-black ${isFeature ? 'aspect-[16/10]' : 'aspect-[4/5]'}`}>
-                  <img
-                    src={artist.image}
-                    alt={artist.name}
-                    loading={index < 3 ? 'eager' : 'lazy'}
-                    className="h-full w-full object-cover grayscale contrast-125 transition-all duration-700 group-hover:scale-105 group-hover:grayscale-0"
-                  />
+                  {artist.image ? (
+                    <img
+                      src={artist.image}
+                      alt={artist.name}
+                      loading={index < 3 ? 'eager' : 'lazy'}
+                      className="h-full w-full object-cover grayscale contrast-125 transition-all duration-700 group-hover:scale-105 group-hover:grayscale-0"
+                    />
+                  ) : (
+                    <div className="h-full w-full bg-neutral-900" />
+                  )}
 
                   <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black via-black/30 to-transparent" />
 
@@ -73,19 +122,19 @@ export const ArtistSection: React.FC = () => {
 
                   <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-4 p-5 md:p-6">
                     <div className="min-w-0">
-                      <span className="font-mono text-[9px] uppercase tracking-[0.25em] text-void-accent">
-                        {artist.genre}
-                      </span>
+                      {artist.genre && (
+                        <span className="font-mono text-[9px] uppercase tracking-[0.25em] text-void-accent">
+                          {artist.genre}
+                        </span>
+                      )}
                       <h3 className={`mt-1.5 font-black uppercase leading-none tracking-tight text-white ${isFeature ? 'text-4xl md:text-6xl' : 'text-2xl md:text-3xl'}`}>
                         {artist.name}
                       </h3>
 
-                      {/* La bio se déplie au survol pour TOUS les artistes.
-                          Le bloc étant ancré en bas de la carte, sa hauteur
-                          croissante pousse le nom vers le haut — le texte
-                          semble monter depuis le bord plutôt qu'apparaître
-                          d'un coup. Masqué sous md : sans souris, le survol
-                          n'existe pas et un appui ouvre directement la page. */}
+                      {/* La bio se déplie au survol. Le bloc étant ancré en
+                          bas, sa hauteur croissante pousse le nom vers le
+                          haut. Masqué sous md : sans souris, le survol
+                          n'existe pas et un appui ouvre la page. */}
                       {artist.bio && (
                         <p
                           className={`hidden overflow-hidden font-light leading-relaxed text-neutral-300 opacity-0 transition-all duration-500 ease-out group-hover:opacity-100 group-focus-visible:opacity-100 md:block ${
@@ -94,9 +143,7 @@ export const ArtistSection: React.FC = () => {
                               : 'max-h-0 text-xs group-hover:mt-3 group-hover:max-h-24 group-focus-visible:mt-3 group-focus-visible:max-h-24'
                           }`}
                         >
-                          <span className={isFeature ? 'line-clamp-3' : 'line-clamp-3'}>
-                            {artist.bio}
-                          </span>
+                          <span className="line-clamp-3">{artist.bio}</span>
                         </p>
                       )}
                     </div>

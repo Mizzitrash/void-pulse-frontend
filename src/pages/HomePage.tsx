@@ -1,8 +1,10 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { motion, useReducedMotion } from 'framer-motion';
 import { ARTISTS_DATA } from '../data/artists';
 import { BEATS_DATA } from '../data/beats';
+import { collection, getCountFromServer } from 'firebase/firestore';
+import { db } from '../firebase';
 import { ArrowRight, Disc3, Users, Radio } from 'lucide-react';
 
 interface HomePageProps {
@@ -13,10 +15,37 @@ export const HomePage: React.FC<HomePageProps> = () => {
   const navigate = useNavigate();
   const reduceMotion = useReducedMotion();
 
+  // Nombre réel de pages artistes en base. getCountFromServer compte sans
+  // télécharger les documents — inutile de rapatrier sept fiches complètes
+  // pour afficher un chiffre. On part du décompte statique en attendant la
+  // réponse, pour que le bloc n'affiche jamais un zéro transitoire.
+  const [artistCount, setArtistCount] = useState(ARTISTS_DATA.length);
+
+  useEffect(() => {
+    getCountFromServer(collection(db, 'artists'))
+      .then((snap) => {
+        const n = snap.data().count;
+        if (n > 0) setArtistCount(n);
+      })
+      .catch((error) => console.error('Comptage des artistes :', error));
+  }, []);
+
   // La phrase n'apparaissant qu'une fois, on ne peut pas boucler par
   // duplication : on la fait traverser l'écran de droite à gauche, puis
   // le cycle recommence. Régler la vitesse via la durée dans le style.
-  const marqueeText = 'Une nouvelle ère sonore. Reconstruire la musique à partir du vide. Découvrez tous nos artistes dès maintenant en exclusivité !';
+  //
+  // Découpée en segments pour donner un rythme de lecture : le lettrage
+  // est en contour (creux), et seuls les mots porteurs sont pleins. L'œil
+  // accroche donc sur "Revivez la musique" et "résonner" plutôt que de
+  // glisser sur une ligne uniforme.
+  const MANIFESTO: Array<{ text: string; accent?: boolean }> = [
+    { text: 'Une nouvelle ère est née.' },
+    { text: 'Revivez la musique,', accent: true },
+    { text: 'faites' },
+    { text: 'résonner', accent: true },
+    { text: 'votre âme.' },
+  ];
+  const marqueeText = MANIFESTO.map((p) => p.text).join(' ');
 
   const fadeUp = {
     hidden: { opacity: 0, y: reduceMotion ? 0 : 24 },
@@ -50,7 +79,7 @@ export const HomePage: React.FC<HomePageProps> = () => {
             transition={{ duration: 0.6, ease: 'easeOut' }}
             className="font-mono text-[10px] tracking-[0.5em] uppercase text-void-accent"
           >
-            Bienvenue sur...
+            Label indépendant
           </motion.p>
 
           <motion.h1
@@ -68,7 +97,7 @@ export const HomePage: React.FC<HomePageProps> = () => {
             transition={{ duration: 0.6, ease: 'easeOut' }}
             className="mt-8 max-w-md font-light text-xs md:text-sm uppercase tracking-[0.22em] leading-relaxed text-neutral-400"
           >
-            Une nouvelle ère sonore. Reconstruire la musique à partir du vide. Découvrez tous nos artistes dès maintenant en exclusivité !
+            Une nouvelle ère sonore. Reconstruire la musique à partir du vide.
           </motion.p>
 
           <motion.div
@@ -98,19 +127,32 @@ export const HomePage: React.FC<HomePageProps> = () => {
       {/* aria-hidden sur l'élément animé + une copie lisible en sr-only :
           le texte défilant n'apporte rien à un lecteur d'écran, mais la
           phrase, elle, fait partie du contenu de la page. */}
-      <div className="relative overflow-hidden border-y border-white/10 bg-neutral-950/60 py-5">
+      <div className="void-ticker relative overflow-hidden border-y border-white/10 bg-neutral-950/60 py-8">
         <p className="sr-only">{marqueeText}</p>
-        <div
-          aria-hidden="true"
-          className="w-max whitespace-nowrap font-black uppercase tracking-tight text-xl md:text-2xl text-neutral-700"
-          style={
-            reduceMotion
-              ? { transform: 'translateX(0)' }
-              : { animation: 'voidTicker 34s linear infinite' }
-          }
-        >
-          {marqueeText}
-        </div>
+
+        {reduceMotion ? (
+          // Sans animation, un texte en `w-max whitespace-nowrap` déborderait
+          // et serait coupé par l'overflow du conteneur : on repasse donc sur
+          // un rendu centré qui revient à la ligne normalement.
+          <p className="mx-auto max-w-4xl px-6 text-center text-2xl md:text-3xl font-black uppercase tracking-tight text-neutral-400">
+            {marqueeText}
+          </p>
+        ) : (
+          <div
+            aria-hidden="true"
+            className="void-ticker__track w-max whitespace-nowrap text-xl md:text-2xl font-black uppercase tracking-tight"
+            style={{ animation: 'voidTicker 34s linear infinite' }}
+          >
+            {MANIFESTO.map((part, i) => (
+              <span
+                key={i}
+                className={part.accent ? 'void-ticker__accent' : 'void-ticker__outline'}
+              >
+                {part.text}{' '}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* ───────────────────── CE QU'ON FAIT ───────────────────── */}
@@ -125,7 +167,7 @@ export const HomePage: React.FC<HomePageProps> = () => {
           {[
             {
               icon: Users,
-              label: `${ARTISTS_DATA.length} artistes`,
+              label: `${artistCount} artiste${artistCount > 1 ? 's' : ''}`,
               title: 'Le roster',
               body: "Les voix et les visionnaires qui façonnent la signature sonore du label.",
               to: '/',
