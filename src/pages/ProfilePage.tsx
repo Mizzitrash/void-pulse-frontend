@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { collection, query, where, orderBy, onSnapshot, Timestamp } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot, doc, getDoc, setDoc, Timestamp } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../firebase';
-import { Camera, User, Mail, ShieldCheck, ArrowLeft, LogOut, Edit2, Check, X, Loader2, ShieldAlert, Package } from 'lucide-react';
+import { Camera, User, Mail, ShieldCheck, ArrowLeft, LogOut, Edit2, Check, X, Loader2, ShieldAlert, Package, Mic2, PenLine, Users, Eye, EyeOff } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 interface OrderItem {
@@ -22,12 +22,40 @@ interface Order {
 }
 
 export const ProfilePage: React.FC = () => {
-  const { profile, loading, logout, updateProfileData, firebaseUser } = useAuth();
+  const { profile, loading, logout, updateProfileData, firebaseUser, hasPermission } = useAuth();
 
   const [isEditingUsername, setIsEditingUsername] = useState(false);
   const [usernameInput, setUsernameInput] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [avatarError, setAvatarError] = useState<string | null>(null);
+
+  // Fiche publique "équipe". Stockée dans /team/{uid} et non dans le
+  // document utilisateur : les règles Firestore s'appliquant au document
+  // entier, mettre ces champs dans /users obligerait à rendre l'email de
+  // compte et les rôles publics eux aussi.
+  const [team, setTeam] = useState({
+    displayName: '',
+    title: '',
+    bio: '',
+    publicEmail: '',
+    instagramUrl: '',
+    youtubeUrl: '',
+    visible: false,
+  });
+  const [teamLoaded, setTeamLoaded] = useState(false);
+  // La fiche publique est réservée aux fonctions du label. hasPermission
+  // renvoie déjà true pour ADMIN et FONDATEUR quel que soit le rôle testé,
+  // ils sont donc couverts sans condition supplémentaire.
+  const canHaveTeamCard =
+    hasPermission('COMMUNITY_MANAGER') ||
+    hasPermission('REALISATEUR') ||
+    hasPermission('MANAGER');
+  const [teamSaving, setTeamSaving] = useState(false);
+  const [teamMsg, setTeamMsg] = useState<string | null>(null);
+
+  const [isEditingBio, setIsEditingBio] = useState(false);
+  const [bioInput, setBioInput] = useState('');
+  const MAX_BIO = 400;
 
   // --- Historique des commandes ---
   const [orders, setOrders] = useState<Order[]>([]);
@@ -37,7 +65,29 @@ export const ProfilePage: React.FC = () => {
     if (profile?.username) {
       setUsernameInput(profile.username);
     }
+    setBioInput(profile?.bio || '');
   }, [profile]);
+
+  useEffect(() => {
+    if (!firebaseUser || !canHaveTeamCard) return;
+    getDoc(doc(db, 'team', firebaseUser.uid))
+      .then((snap) => {
+        if (snap.exists()) {
+          const d = snap.data();
+          setTeam({
+            displayName: d.displayName || '',
+            title: d.title || '',
+            bio: d.bio || '',
+            publicEmail: d.publicEmail || '',
+            instagramUrl: d.instagramUrl || '',
+            youtubeUrl: d.youtubeUrl || '',
+            visible: d.visible !== false,
+          });
+        }
+      })
+      .catch((e) => console.error('Chargement fiche équipe :', e))
+      .finally(() => setTeamLoaded(true));
+  }, [firebaseUser, canHaveTeamCard]);
 
   useEffect(() => {
     if (!firebaseUser) {
@@ -149,6 +199,56 @@ export const ProfilePage: React.FC = () => {
       };
       reader.readAsDataURL(file);
     });
+
+  const handleSaveBio = async () => {
+    if (bioInput === (profile.bio || '')) {
+      setIsEditingBio(false);
+      return;
+    }
+    setIsSaving(true);
+    try {
+      if (updateProfileData) {
+        await updateProfileData({ bio: bioInput.trim().slice(0, MAX_BIO) });
+      }
+      setIsEditingBio(false);
+    } catch {
+      alert('Erreur lors de la mise à jour de la bio.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSaveTeam = async () => {
+    if (!firebaseUser) return;
+    if (!team.displayName.trim() || !team.title.trim()) {
+      setTeamMsg('Le nom affiché et la fonction sont obligatoires.');
+      return;
+    }
+    setTeamSaving(true);
+    setTeamMsg(null);
+    try {
+      await setDoc(doc(db, 'team', firebaseUser.uid), {
+        displayName: team.displayName.trim().slice(0, 60),
+        title: team.title.trim().slice(0, 60),
+        bio: team.bio.trim().slice(0, 800),
+        // La photo est recopiée ici depuis l'avatar : la section équipe est
+        // publique et ne peut donc pas lire /users pour aller la chercher.
+        photoUrl: profile.avatarUrl || '',
+        publicEmail: team.publicEmail.trim().slice(0, 120),
+        instagramUrl: team.instagramUrl.trim().slice(0, 300),
+        youtubeUrl: team.youtubeUrl.trim().slice(0, 300),
+        visible: team.visible,
+        updatedAt: new Date().toISOString(),
+      });
+      setTeamMsg('Fiche enregistrée.');
+      setTimeout(() => setTeamMsg(null), 3000);
+    } catch (e) {
+      console.error(e);
+      setTeamMsg("Échec de l'enregistrement.");
+    } finally {
+      setTeamSaving(false);
+    }
+  };
 
   const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -331,6 +431,180 @@ export const ProfilePage: React.FC = () => {
               <Mail size={12} className="text-neutral-500" /> {profile.email}
             </p>
           </div>
+        </div>
+
+        {/* Accès direct à sa page artiste : jusqu'ici, un artiste devait
+            connaître l'URL de sa propre page pour la modifier. */}
+        {profile.artistId && (
+          <div className="flex flex-col sm:flex-row gap-3">
+            <Link
+              to={`/artists/${profile.artistId}`}
+              className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-[#A00303] bg-[#A00303] px-4 py-3 text-xs font-mono font-bold uppercase tracking-wider text-white transition-colors hover:bg-transparent hover:text-[#A00303]"
+            >
+              <Mic2 size={15} aria-hidden="true" /> Voir ma page artiste
+            </Link>
+            <Link
+              to={`/artist/edit/${profile.artistId}`}
+              className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-3 text-xs font-mono font-bold uppercase tracking-wider text-neutral-300 transition-colors hover:border-neutral-600 hover:text-white"
+            >
+              <PenLine size={15} aria-hidden="true" /> Modifier ma page
+            </Link>
+          </div>
+        )}
+
+        {/* ─────── FICHE PUBLIQUE ÉQUIPE ─────── */}
+        {canHaveTeamCard && (
+        <div className="space-y-3 rounded-xl border border-neutral-900 bg-black p-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="flex items-center gap-2 text-xs font-mono font-bold uppercase tracking-wider text-neutral-400">
+              <Users size={14} className="text-[#A00303]" aria-hidden="true" /> MA FICHE ÉQUIPE
+            </h2>
+            <button
+              onClick={() => setTeam((t) => ({ ...t, visible: !t.visible }))}
+              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-mono text-[10px] font-bold uppercase transition-colors ${
+                team.visible
+                  ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-800/40'
+                  : 'bg-neutral-900 text-neutral-500 border border-neutral-800'
+              }`}
+            >
+              {team.visible ? <Eye size={12} aria-hidden="true" /> : <EyeOff size={12} aria-hidden="true" />}
+              {team.visible ? 'Visible' : 'Masquée'}
+            </button>
+          </div>
+
+          <p className="font-mono text-[10px] leading-relaxed text-neutral-600">
+            Ces informations apparaissent publiquement sur la page d'accueil.
+            N'y mets rien que tu ne veuilles pas voir lu par n'importe qui —
+            l'email renseigné ici sera visible de tous.
+          </p>
+
+          {!teamLoaded ? (
+            <div className="flex justify-center py-4">
+              <Loader2 className="animate-spin text-neutral-600" size={16} aria-hidden="true" />
+            </div>
+          ) : (
+            <div className="space-y-3 pt-1">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <label htmlFor="t-name" className="mb-1 block font-mono text-[10px] uppercase text-neutral-500">Nom affiché</label>
+                  <input id="t-name" type="text" maxLength={60} value={team.displayName}
+                    onChange={(e) => setTeam({ ...team, displayName: e.target.value })}
+                    placeholder={profile.username || ''}
+                    className="w-full rounded-lg border border-neutral-800 bg-neutral-950 p-2.5 text-xs text-white outline-none focus:border-[#A00303]" />
+                </div>
+                <div>
+                  <label htmlFor="t-title" className="mb-1 block font-mono text-[10px] uppercase text-neutral-500">Fonction</label>
+                  <input id="t-title" type="text" maxLength={60} value={team.title}
+                    onChange={(e) => setTeam({ ...team, title: e.target.value })}
+                    placeholder="Réalisateur, Manager…"
+                    className="w-full rounded-lg border border-neutral-800 bg-neutral-950 p-2.5 text-xs text-white outline-none focus:border-[#A00303]" />
+                </div>
+              </div>
+
+              <div>
+                <label htmlFor="t-bio" className="mb-1 block font-mono text-[10px] uppercase text-neutral-500">Biographie publique</label>
+                <textarea id="t-bio" rows={4} maxLength={800} value={team.bio}
+                  onChange={(e) => setTeam({ ...team, bio: e.target.value })}
+                  className="w-full resize-none rounded-lg border border-neutral-800 bg-neutral-950 p-2.5 text-xs text-white outline-none focus:border-[#A00303]" />
+                <p className="mt-1 text-right font-mono text-[10px] text-neutral-700">{team.bio.length} / 800</p>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div>
+                  <label htmlFor="t-mail" className="mb-1 block font-mono text-[10px] uppercase text-neutral-500">Email public</label>
+                  <input id="t-mail" type="email" maxLength={120} value={team.publicEmail}
+                    onChange={(e) => setTeam({ ...team, publicEmail: e.target.value })}
+                    className="w-full rounded-lg border border-neutral-800 bg-neutral-950 p-2.5 text-xs text-white outline-none focus:border-[#A00303]" />
+                </div>
+                <div>
+                  <label htmlFor="t-ig" className="mb-1 block font-mono text-[10px] uppercase text-neutral-500">Instagram</label>
+                  <input id="t-ig" type="url" maxLength={300} value={team.instagramUrl}
+                    onChange={(e) => setTeam({ ...team, instagramUrl: e.target.value })}
+                    className="w-full rounded-lg border border-neutral-800 bg-neutral-950 p-2.5 text-xs text-white outline-none focus:border-[#A00303]" />
+                </div>
+                <div>
+                  <label htmlFor="t-yt" className="mb-1 block font-mono text-[10px] uppercase text-neutral-500">YouTube</label>
+                  <input id="t-yt" type="url" maxLength={300} value={team.youtubeUrl}
+                    onChange={(e) => setTeam({ ...team, youtubeUrl: e.target.value })}
+                    className="w-full rounded-lg border border-neutral-800 bg-neutral-950 p-2.5 text-xs text-white outline-none focus:border-[#A00303]" />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between gap-3 pt-1">
+                <span className="font-mono text-[10px] text-neutral-600">
+                  Photo reprise de ton avatar ci-dessus.
+                </span>
+                <div className="flex items-center gap-3">
+                  {teamMsg && <span className="font-mono text-[10px] text-neutral-400">{teamMsg}</span>}
+                  <button onClick={handleSaveTeam} disabled={teamSaving}
+                    className="flex items-center gap-2 rounded-lg bg-[#A00303] px-4 py-2 font-mono text-[10px] font-bold uppercase text-white transition-colors hover:bg-[#c00404] disabled:opacity-50">
+                    {teamSaving && <Loader2 size={12} className="animate-spin" aria-hidden="true" />}
+                    Enregistrer
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+        )}
+
+        {/* Biographie personnelle */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xs font-mono font-bold uppercase tracking-wider text-neutral-400 flex items-center gap-2">
+              <PenLine size={14} className="text-[#A00303]" /> À PROPOS DE MOI
+            </h2>
+            {!isEditingBio && (
+              <button
+                onClick={() => setIsEditingBio(true)}
+                className="font-mono text-[10px] uppercase tracking-wider text-neutral-500 transition-colors hover:text-white"
+              >
+                {profile.bio ? 'Modifier' : 'Ajouter'}
+              </button>
+            )}
+          </div>
+
+          {isEditingBio ? (
+            <div className="space-y-2">
+              <textarea
+                value={bioInput}
+                onChange={(e) => setBioInput(e.target.value)}
+                maxLength={MAX_BIO}
+                rows={4}
+                autoFocus
+                placeholder="Quelques lignes sur toi…"
+                className="w-full resize-none rounded-xl border border-neutral-700 bg-black p-3 text-sm text-white outline-none focus:border-[#A00303]"
+              />
+              <div className="flex items-center justify-between">
+                <span className="font-mono text-[10px] text-neutral-600">
+                  {bioInput.length} / {MAX_BIO}
+                </span>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => { setIsEditingBio(false); setBioInput(profile.bio || ''); }}
+                    className="rounded-lg bg-neutral-800 px-3 py-1.5 text-neutral-400 transition-colors hover:text-white"
+                  >
+                    <X size={14} aria-hidden="true" />
+                  </button>
+                  <button
+                    onClick={handleSaveBio}
+                    disabled={isSaving}
+                    className="rounded-lg bg-green-600 px-3 py-1.5 text-white transition-colors hover:bg-green-700 disabled:opacity-50"
+                  >
+                    <Check size={14} aria-hidden="true" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <p className="rounded-xl border border-neutral-900 bg-black p-4 text-sm font-light leading-relaxed text-neutral-300">
+              {profile.bio || (
+                <span className="font-mono text-xs text-neutral-600">
+                  Aucune bio pour le moment.
+                </span>
+              )}
+            </p>
+          )}
         </div>
 
         <div className="space-y-4">

@@ -121,3 +121,15 @@ body::before {
     scroll-behavior: auto !important;
   }
 }
+
+/* ---------------------------------------------------------------------
+   BANDEAU MANIFESTE
+   La phrase traverse l'écran une seule fois par cycle : elle part hors
+   cadre à droite (100vw) et sort complètement à gauche (-100% de sa
+   propre largeur). Neutralisé par le bloc prefers-reduced-motion plus
+   haut, et le composant ne l'applique pas non plus dans ce cas.
+   --------------------------------------------------------------------- */
+@keyframes voidTicker {
+  from { transform: translateX(100vw); }
+  to   { transform: translateX(-100%); }
+}

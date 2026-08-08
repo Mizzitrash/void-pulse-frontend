@@ -13,7 +13,7 @@ interface UserProfile {
   artistId?: string;
 }
 
-const AVAILABLE_ROLES = ['REALISATEUR', 'COMMUNITY_MANAGER', 'ARTISTE', 'ADMIN', 'FONDATEUR'];
+const AVAILABLE_ROLES = ['REALISATEUR', 'COMMUNITY_MANAGER', 'MANAGER', 'ARTISTE', 'ADMIN', 'FONDATEUR'];
 
 const slugify = (str: string) =>
   str
@@ -42,6 +42,8 @@ const getRoleStyle = (role: string, isActive: boolean = true) => {
       return 'bg-emerald-950/80 border border-emerald-600/60 text-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.2)]';
     case 'ARTISTE':
       return 'bg-purple-950/80 border border-purple-600/60 text-purple-400 shadow-[0_0_10px_rgba(168,85,247,0.2)]';
+    case 'MANAGER':
+      return 'bg-cyan-950/80 border border-cyan-600/60 text-cyan-400 shadow-[0_0_10px_rgba(34,211,238,0.2)]';
     case 'MEMBRE':
     case 'USER':
     default:
@@ -423,7 +425,7 @@ export const AdminDashboard: React.FC = () => {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-black uppercase tracking-tight text-white flex items-center gap-3">
-            <Shield className="text-[#A00303]" size={28} />
+            <Shield className="text-void-accent" size={28} />
             <span>Gestion des Rôles & Accès</span>
           </h1>
           <p className="text-neutral-400 text-xs font-mono uppercase mt-1">
@@ -451,7 +453,7 @@ export const AdminDashboard: React.FC = () => {
                 placeholder="Rechercher un utilisateur..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="bg-neutral-900 border border-neutral-800 rounded-xl pl-9 pr-4 py-2 text-xs font-mono text-white focus:outline-none focus:border-[#A00303] w-full md:w-64 transition-colors"
+                className="bg-neutral-900 border border-neutral-800 rounded-xl pl-9 pr-4 py-2 text-xs font-mono text-white focus:outline-none focus:border-void-accent w-full md:w-64 transition-colors"
               />
             </div>
           </div>
@@ -464,7 +466,7 @@ export const AdminDashboard: React.FC = () => {
       {/* SECTION 1 : RÔLES SPÉCIAUX / ÉQUIPE */}
       <div className="space-y-4">
         <h2 className="text-sm font-mono font-bold uppercase tracking-wider text-white flex items-center gap-2">
-          <UserCheck size={16} className="text-[#A00303]" /> Équipe & Rôles Spéciaux ({specialUsers.length})
+          <UserCheck size={16} className="text-void-accent" /> Équipe & Rôles Spéciaux ({specialUsers.length})
         </h2>
 
         <div className="bg-neutral-950 border border-neutral-900 rounded-2xl overflow-hidden shadow-2xl">
@@ -528,7 +530,7 @@ export const AdminDashboard: React.FC = () => {
       {/* MODALE : création/liaison de page artiste, déclenchée en cochant ARTISTE */}
       {linkingUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <div className="w-full max-w-md bg-neutral-950 border border-[#A00303]/40 rounded-2xl p-6 space-y-4 shadow-2xl">
+          <div className="w-full max-w-md bg-neutral-950 border border-void-accent/40 rounded-2xl p-6 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-mono font-bold uppercase tracking-wider text-white">
                 Lier une page artiste
@@ -553,7 +555,7 @@ export const AdminDashboard: React.FC = () => {
                 onClick={() => setLinkMode('existing')}
                 className={`flex-1 py-2 rounded text-[10px] font-mono font-bold uppercase transition-all ${
                   linkMode === 'existing'
-                    ? 'bg-[#A00303] text-white'
+                    ? 'bg-void-accent text-white'
                     : 'bg-neutral-900 text-neutral-400 border border-neutral-800'
                 }`}
               >
@@ -564,7 +566,7 @@ export const AdminDashboard: React.FC = () => {
                 onClick={() => setLinkMode('new')}
                 className={`flex-1 py-2 rounded text-[10px] font-mono font-bold uppercase transition-all ${
                   linkMode === 'new'
-                    ? 'bg-[#A00303] text-white'
+                    ? 'bg-void-accent text-white'
                     : 'bg-neutral-900 text-neutral-400 border border-neutral-800'
                 }`}
               >
@@ -580,7 +582,7 @@ export const AdminDashboard: React.FC = () => {
                 <select
                   value={selectedExistingSlug}
                   onChange={(e) => setSelectedExistingSlug(e.target.value)}
-                  className="w-full bg-black border border-neutral-800 px-3 py-2 rounded text-xs text-white focus:border-[#A00303] outline-none"
+                  className="w-full bg-black border border-neutral-800 px-3 py-2 rounded text-xs text-white focus:border-void-accent outline-none"
                 >
                   <option value="">-- Choisir une page --</option>
                   {artistPages.map((p) => (
@@ -602,7 +604,7 @@ export const AdminDashboard: React.FC = () => {
                   type="text"
                   value={artistNameInput}
                   onChange={(e) => setArtistNameInput(e.target.value)}
-                  className="w-full bg-black border border-neutral-800 px-3 py-2 rounded text-xs text-white focus:border-[#A00303] outline-none"
+                  className="w-full bg-black border border-neutral-800 px-3 py-2 rounded text-xs text-white focus:border-void-accent outline-none"
                 />
 
                 <label className="text-[10px] font-mono text-neutral-500 uppercase block">
@@ -612,7 +614,7 @@ export const AdminDashboard: React.FC = () => {
                   type="text"
                   value={artistSlugInput}
                   onChange={(e) => setArtistSlugInput(e.target.value)}
-                  className="w-full bg-black border border-neutral-800 px-3 py-2 rounded text-xs text-white focus:border-[#A00303] outline-none"
+                  className="w-full bg-black border border-neutral-800 px-3 py-2 rounded text-xs text-white focus:border-void-accent outline-none"
                 />
               </div>
             )}
@@ -623,7 +625,7 @@ export const AdminDashboard: React.FC = () => {
               <button
                 onClick={handleConfirmArtistLink}
                 disabled={isLinking}
-                className="flex-1 py-2.5 bg-[#A00303] hover:bg-[#c00404] disabled:opacity-50 text-white text-xs font-mono font-bold uppercase rounded-lg transition-all"
+                className="flex-1 py-2.5 bg-void-accent hover:bg-[#c00404] disabled:opacity-50 text-white text-xs font-mono font-bold uppercase rounded-lg transition-all"
               >
                 {isLinking ? 'Liaison en cours...' : 'Confirmer'}
               </button>

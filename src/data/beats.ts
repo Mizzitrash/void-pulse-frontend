@@ -17,7 +17,7 @@ export const BEATS_DATA: Beat[] = [
   {
     id: 'b1',
     title: 'HØLLØW',
-    producer: 'VØID PULSE ft. KNZ & Noadecowcow',
+    producer: 'VØID PULSE ft. Kayes & N2cow',
     bpm: 140,
     key: 'C Minor',
     tags: ['DARK TRAP', 'HEAVY 808', 'INDUSTRIAL'],
@@ -29,13 +29,13 @@ export const BEATS_DATA: Beat[] = [
   {
     id: 'b2',
     title: 'MØRE.',
-    producer: 'VØID PULSE ft. KNZ & Noadecowcow',
+    producer: 'VØID PULSE ft. Kayes & N2cow',
     bpm: 144,
     key: 'F# Minor',
     tags: ['DRILL', 'ATMOSPHERIC', 'SYNTH'],
     audioUrl: '/more-vb.mp3',
     coverUrl: '/cover2.jpg',
-    price: '34.99 €',
+    price: 'INDISPONIBLE',
     status: 'coming_soon', // SORT BIENTÔT
   },
   {
@@ -44,10 +44,10 @@ export const BEATS_DATA: Beat[] = [
     producer: 'Kayes',
     bpm: 130,
     key: 'G Minor',
-    tags: ['LBL', 'PLUGG', 'DARK'],
+    tags: ['ORCHESTRAL', 'DARK'],
     audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3',
     coverUrl: '/cover3.jpg',
-    price: '29.99 €',
+    price: 'INDISPONIBLE',
     status: 'coming_soon', // VENDU / INDISPONIBLE
   },
 ];

@@ -17,7 +17,7 @@ export const ARTISTS_DATA: Artist[] = [
   {
     id: '2',
     name: 'MUELSA',
-    genre: 'SEXYDRILL / TRAP',
+    genre: 'SEXYDRILL / JERSEYCLUB',
     image: '/pdp-muelsa.jpg',
     bio: "BEATMAKER du label VØID PULSE, MUELSA, artiste masqué avec sac sur le dos. Il débute la drill en 2021 et aujourd'hui, il évolue dans la sexydrill.",
     audio: '/muelsa.mp3',

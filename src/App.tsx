@@ -1,19 +1,24 @@
 import { useState, lazy, Suspense } from 'react';
-import { BrowserRouter as Router, Routes, Route, useNavigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, useNavigate, Link } from 'react-router-dom';
 import { CartProvider } from './context/CartContext';
 import { AuthProvider } from './context/AuthContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Navbar } from './components/Navbar';
 import { IntroScreen } from './components/IntroScreen';
 import { ArtistSection } from './components/ArtistSection';
+import { TeamSection } from './components/TeamSection';
 import { CartDrawer } from './components/CartDrawer';
+import { Footer } from './components/Footer';
+import { HomePage } from './pages/HomePage';
+// ProtectedRoute reste en import direct : il ne pèse que ~0,5 Ko, et le
+// charger en lazy créait une cascade réseau — il fallait attendre son
+// chunk AVANT que celui de la page protégée ne commence à se télécharger.
+import { ProtectedRoute } from './components/ProtectedRoute';
+import { RequireAuth } from './components/RequireAuth';
 
-// Découpage du bundle par route. Avant, TOUT était dans un seul fichier
-// JS : un visiteur anonyme téléchargeait AdminDashboard, EditArtistPage et
-// CommunityManagerPage — du code auquel il n'aura jamais accès. Chaque
-// import() ci-dessous devient un chunk séparé, chargé à la demande.
-// Les pages du chemin critique (accueil : Navbar, ArtistSection, Intro)
-// restent en import direct pour ne pas retarder le premier rendu.
+// Découpage du bundle par route : chaque import() devient un chunk chargé
+// à la demande. Les éléments du chemin critique (Navbar, ArtistSection,
+// IntroScreen) restent en import direct pour ne pas retarder le premier rendu.
 const BeatsSection = lazy(() => import('./components/BeatsSection').then(m => ({ default: m.BeatsSection })));
 const NewsSection = lazy(() => import('./components/NewsSection').then(m => ({ default: m.NewsSection })));
 const CheckoutPage = lazy(() => import('./components/CheckoutPage').then(m => ({ default: m.CheckoutPage })));
@@ -24,8 +29,8 @@ const DiscoveryPage = lazy(() => import('./pages/DiscoveryPage').then(m => ({ de
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard').then(m => ({ default: m.AdminDashboard })));
 const ArtistDetailPage = lazy(() => import('./pages/ArtistDetailPage').then(m => ({ default: m.ArtistDetailPage })));
 const EditArtistPage = lazy(() => import('./pages/EditArtistPage').then(m => ({ default: m.EditArtistPage })));
+const SubmissionsPage = lazy(() => import('./pages/SubmissionsPage').then(m => ({ default: m.SubmissionsPage })));
 const JoinUsPage = lazy(() => import('./pages/JoinUsPage').then(m => ({ default: m.JoinUsPage })));
-const ProtectedRoute = lazy(() => import('./components/ProtectedRoute').then(m => ({ default: m.ProtectedRoute })));
 
 const INTRO_SESSION_KEY = 'void-pulse-intro-shown';
 
@@ -74,19 +79,17 @@ function MainLayout({ children }: { children: React.ReactNode }) {
         Aller au contenu
       </a>
       <Navbar />
-      <div id="contenu-principal">{children}</div>
+      {/* <main> plutôt qu'un <div> neutre : c'est le repère que les lecteurs
+          d'écran utilisent pour sauter directement au contenu. Il n'y en
+          avait aucun sur les pages autres que l'accueil. */}
+      <main id="contenu-principal">{children}</main>
+      <Footer />
       <CartDrawer onGoToCheckout={() => navigate('/checkout')} />
     </div>
   );
 }
 
-function HomePage({ showIntro, setShowIntro }: { showIntro: boolean; setShowIntro: (v: boolean) => void }) {
-  const navigate = useNavigate();
-
-  const scrollToArtists = () => {
-    document.getElementById('artists-section')?.scrollIntoView({ behavior: 'smooth' });
-  };
-
+function HomeWrapper({ showIntro, setShowIntro }: { showIntro: boolean; setShowIntro: (v: boolean) => void }) {
   return (
     <MainLayout>
       {showIntro && (
@@ -97,42 +100,11 @@ function HomePage({ showIntro, setShowIntro }: { showIntro: boolean; setShowIntr
           }}
         />
       )}
-
-      <main className="min-h-[80vh] flex flex-col items-center justify-center text-center px-4 relative z-10 py-16">
-        <span className="text-void-accent text-xs font-bold tracking-[0.4em] uppercase mb-4 animate-pulse drop-shadow-[0_0_8px_rgba(160,3,3,0.8)]">
-          Pulse from the void
-        </span>
-        <h1 className="text-6xl md:text-9xl font-black tracking-tighter uppercase bg-linear-to-b from-white via-neutral-200 to-neutral-700 bg-clip-text text-transparent drop-shadow-2xl">
-          VØID PULSE
-        </h1>
-        <p className="text-neutral-400 text-xs md:text-sm tracking-[0.25em] uppercase mt-6 max-w-md font-light leading-relaxed">
-          Une nouvelle ère sonore. Reconstruire la musique à partir du vide.
-        </p>
-
-        <div className="mt-10 flex flex-col sm:flex-row gap-4 items-center">
-          <button
-            onClick={() => navigate('/beats')}
-            className="px-8 py-4 border border-white/20 text-xs font-bold tracking-[0.25em] uppercase bg-black hover:bg-void-accent hover:border-void-accent hover:text-white transition-all duration-500 shadow-lg hover:shadow-[0_0_20px_rgba(160,3,3,0.6)] cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-void-accent"
-          >
-            EXPLORER LES BEATS
-          </button>
-        </div>
-
-        <button
-          onClick={scrollToArtists}
-          className="mt-12 flex flex-col items-center gap-2 text-neutral-500 hover:text-white transition-colors cursor-pointer group focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-void-accent"
-          aria-label="Faire défiler jusqu'à la section Artistes"
-        >
-          <span className="text-[10px] font-mono uppercase tracking-widest group-hover:text-void-accent transition-colors">Artistes</span>
-          <div className="w-5 h-9 rounded-full border-2 border-neutral-700 group-hover:border-void-accent flex justify-center pt-2 transition-colors">
-            <div className="w-1 h-2 bg-neutral-400 group-hover:bg-void-accent rounded-full animate-bounce" />
-          </div>
-        </button>
-      </main>
-
+      <HomePage showIntro={showIntro} />
       <section id="artists-section" aria-label="Nos artistes">
         <ArtistSection />
       </section>
+      <TeamSection />
     </MainLayout>
   );
 }
@@ -148,6 +120,10 @@ function NewsPage() {
 
 function JoinUsWrapper() {
   return <MainLayout><JoinUsPage /></MainLayout>;
+}
+
+function SubmissionsWrapper() {
+  return <MainLayout><SubmissionsPage /></MainLayout>;
 }
 
 function DiscoveryWrapper() {
@@ -184,6 +160,30 @@ function AuthWrapper() {
   return <AuthPage onBack={() => navigate('/')} />;
 }
 
+function NotFoundPage() {
+  return (
+    <MainLayout>
+      <section className="min-h-[60vh] flex flex-col items-center justify-center px-6 py-24 text-center">
+        <span className="text-xs font-mono font-bold uppercase tracking-[0.3em] text-void-accent">
+          Erreur 404
+        </span>
+        <h1 className="mt-6 text-4xl font-black uppercase tracking-tight text-white">
+          Page introuvable
+        </h1>
+        <p className="mt-4 max-w-xl text-sm text-neutral-400">
+          La page que vous cherchez n’existe pas ou a été déplacée.
+        </p>
+        <Link
+          to="/"
+          className="mt-8 inline-flex items-center rounded-full border border-white/20 px-6 py-3 text-xs font-mono font-bold uppercase tracking-widest text-white transition hover:bg-white hover:text-black"
+        >
+          Retour à l’accueil
+        </Link>
+      </section>
+    </MainLayout>
+  );
+}
+
 export function App() {
   const [showIntro, setShowIntro] = useState(shouldShowIntro);
 
@@ -194,11 +194,18 @@ export function App() {
           <Router>
             <Suspense fallback={<RouteFallback />}>
               <Routes>
-                <Route path="/" element={<HomePage showIntro={showIntro} setShowIntro={setShowIntro} />} />
+                <Route path="/" element={<HomeWrapper showIntro={showIntro} setShowIntro={setShowIntro} />} />
                 <Route path="/beats" element={<BeatsPage />} />
                 <Route path="/actu" element={<NewsPage />} />
                 <Route path="/discovery" element={<DiscoveryWrapper />} />
-                <Route path="/rejoins-nous" element={<JoinUsWrapper />} />
+                <Route
+                  path="/rejoins-nous"
+                  element={
+                    <RequireAuth>
+                      <JoinUsWrapper />
+                    </RequireAuth>
+                  }
+                />
 
                 <Route path="/artists/:id" element={<ArtistDetailWrapper />} />
                 <Route path="/artist/edit/:id" element={<EditArtistWrapper />} />
@@ -223,11 +230,20 @@ export function App() {
                   }
                 />
 
+                <Route
+                  path="/candidatures"
+                  element={
+                    <ProtectedRoute allowedRoles={['MANAGER', 'ADMIN', 'FONDATEUR']}>
+                      <SubmissionsWrapper />
+                    </ProtectedRoute>
+                  }
+                />
+
                 <Route path="/checkout" element={<CheckoutWrapper />} />
                 <Route path="/auth" element={<AuthWrapper />} />
                 <Route path="/login" element={<AuthWrapper />} />
 
-                <Route path="*" element={<HomePage showIntro={false} setShowIntro={setShowIntro} />} />
+                <Route path="*" element={<NotFoundPage />} />
               </Routes>
             </Suspense>
           </Router>

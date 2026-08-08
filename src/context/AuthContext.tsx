@@ -12,7 +12,7 @@ import {
 import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 
-export type UserRole = 'USER' | 'COMMUNITY_MANAGER' | 'ADMIN' | 'ARTIST' | 'ARTISTE' | 'FONDATEUR' | 'REALISATEUR';
+export type UserRole = 'USER' | 'COMMUNITY_MANAGER' | 'ADMIN' | 'ARTIST' | 'ARTISTE' | 'FONDATEUR' | 'REALISATEUR' | 'MANAGER';
 
 export interface UserProfile {
   id: string;
@@ -21,6 +21,7 @@ export interface UserProfile {
   roles: UserRole[];
   artistId?: string;
   avatarUrl?: string;
+  bio?: string;
 }
 
 interface AuthContextType {
@@ -84,6 +85,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               roles: userRoles,
               artistId: data.artistId || undefined,
               avatarUrl: data.avatarUrl || authUser.photoURL || undefined,
+              bio: data.bio || undefined,
             };
 
             setProfile(loadedProfile);
