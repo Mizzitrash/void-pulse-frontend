@@ -1,11 +1,5 @@
 rules_version = '2';
 
-// Règles Firebase Storage — jusqu'ici absentes de ton projet, donc soumises
-// au comportement par défaut (souvent tout ouvert ou tout fermé selon la
-// config initiale du bucket). On sécurise ici les deux usages identifiés
-// dans le code : les images de posts (CreatePost.tsx / PostCard.tsx) et,
-// par anticipation, les futures images de pages artistes.
-
 service firebase.storage {
   match /b/{bucket}/o {
 
@@ -28,8 +22,7 @@ service firebase.storage {
       allow delete: if isSignedIn();
     }
 
-    // Images de pages artistes (avatar, bannière...), si tu passes un jour
-    // à l'upload de fichiers plutôt qu'à des URLs externes.
+    // Images de pages artistes (avatar, bannière...).
     match /artists/{artistId}/{fileName} {
       allow read: if true;
       allow write: if isSignedIn() && isValidImage();
@@ -41,6 +34,21 @@ service firebase.storage {
       allow read: if true;
       allow write: if isSignedIn() && request.auth.uid == userId && isValidImage();
       allow delete: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Démos envoyées via la page "Rejoins-nous".
+    // L'écriture est ouverte au public (pas de compte requis pour postuler),
+    // ce qui expose au risque d'utiliser le bucket comme hébergement gratuit.
+    // On le limite par un plafond de taille et une restriction stricte aux
+    // formats audio/vidéo. La lecture reste fermée aux visiteurs anonymes.
+    match /demos/{submissionId}/{fileName} {
+      allow read: if isSignedIn();
+      allow write: if request.resource.size < 50 * 1024 * 1024
+        && (
+          request.resource.contentType.matches('audio/.*') ||
+          request.resource.contentType.matches('video/.*')
+        );
+      allow delete: if isSignedIn();
     }
 
     // Tout le reste est refusé par défaut.

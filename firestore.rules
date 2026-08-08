@@ -25,8 +25,6 @@ service cloud.firestore {
         (('ARTIST' in getRoles()) || ('ARTISTE' in getRoles()));
     }
 
-    // Vrai si le profil de l'utilisateur connecté est rattaché à cette
-    // page artiste précise (par artistId, ou par ID direct en fallback).
     function ownsArtistPage(artistId) {
       let profile = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
       return (
@@ -53,10 +51,8 @@ service cloud.firestore {
     // --- Collection users (profils) ---
 
     match /users/{userId} {
-      // Avant : `allow read: if isSignedIn()` — n'importe quel membre
-      // inscrit pouvait lire TOUTE la collection users (emails, rôles,
-      // artistId de tout le monde). On restreint à son propre profil,
-      // plus les rôles élevés qui en ont un besoin fonctionnel.
+      // Restreint à son propre profil, plus les rôles élevés qui en ont un
+      // besoin fonctionnel (AdminDashboard liste les membres).
       allow read: if isSignedIn() && (
         request.auth.uid == userId ||
         isAdminOrFounder() ||
@@ -67,15 +63,13 @@ service cloud.firestore {
 
       // Un utilisateur peut modifier son propre profil, MAIS SANS toucher
       // à roles ni artistId. On utilise .get(champ, défaut) plutôt que
-      // .champ directement : accéder à une clé absente d'une map (ex:
-      // artistId pour un utilisateur sans page liée) fait planter
-      // l'évaluation de la règle entière, ce qui refusait à tort TOUTE
-      // modification de profil (avatar inclus) pour ces utilisateurs.
+      // .champ directement : accéder à une clé absente d'une map fait
+      // planter l'évaluation de la règle entière, ce qui refusait à tort
+      // TOUTE modification de profil (avatar inclus).
       allow update: if isSignedIn() && request.auth.uid == userId
         && request.resource.data.get('roles', null) == resource.data.get('roles', null)
         && request.resource.data.get('artistId', null) == resource.data.get('artistId', null);
 
-      // Un admin/fondateur peut tout modifier, y compris roles et artistId.
       allow update: if isAdminOrFounder();
     }
 
@@ -92,12 +86,10 @@ service cloud.firestore {
 
     match /posts/{postId} {
       allow read: if true;
-
       allow create: if isCommunityManager() || isAdminOrFounder();
 
       // Les réactions restent ouvertes à tout connecté, mais SEULEMENT
-      // sur le champ "reactions" — pas de réécriture du texte/image
-      // d'un post par un simple visiteur.
+      // sur le champ "reactions".
       allow update: if isSignedIn() && (
         (isCommunityManager() || isAdminOrFounder()) ||
         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions']))
@@ -109,13 +101,9 @@ service cloud.firestore {
     // --- Collection orders (commandes de beats) ---
 
     match /orders/{orderId} {
-      // Un client ne voit que ses propres commandes ; un admin voit tout.
       allow read: if isSignedIn() &&
         (resource.data.uid == request.auth.uid || isAdminOrFounder());
-
       allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid;
-
-      // Une commande est un historique immuable une fois créée.
       allow update: if isAdminOrFounder();
       allow delete: if isAdminOrFounder();
     }
@@ -129,6 +117,16 @@ service cloud.firestore {
       allow delete: if isRealisateur() || isAdminOrFounder();
     }
 
-    // Tout le reste est refusé par défaut.
-  }
-}
+    // --- Collection submissions (candidatures "Rejoins-nous") ---
+    // Écriture ouverte au public : le formulaire est accessible sans compte.
+    // On compense par une validation stricte de la forme du document, pour
+    // qu'une écriture publique ne puisse pas servir à stocker n'importe quoi
+    // ni à saturer la base avec des champs de plusieurs Mo.
+
+    function isValidSubmission() {
+      let d = request.resource.data;
+      return d.keys().hasAll(['artistName', 'email', 'message', 'status'])
+        && d.keys().hasOnly([
+             'artistName', 'email', 'phone', 'message',
+             'linkUrl', 'fileUrl', 'filePath', 'status', 'createdAt'
+           ])
