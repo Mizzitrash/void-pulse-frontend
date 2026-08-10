@@ -6,6 +6,7 @@ import { Footer } from './Footer';
 import { PlayerBar } from './PlayerBar';
 import { CartDrawer } from './CartDrawer';
 import { ConsentBanner } from './ConsentBanner';
+import { ScrollToTop } from './ScrollToTop';
 import { AnalyticsEvents } from '../utils/analytics';
 
 /**
@@ -30,6 +31,8 @@ export const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }
 
   return (
     <div className="relative min-h-screen bg-black pt-20 text-white selection:bg-void-accent selection:text-white">
+      <ScrollToTop />
+
       {/* Lien d'évitement : permet à une personne naviguant au clavier de
           sauter la navigation. Invisible tant qu'il n'a pas le focus. */}
       <a

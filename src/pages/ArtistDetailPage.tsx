@@ -1,16 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../context/AuthContext';
 import { useDocumentMeta } from '../hooks/useDocumentMeta';
 import { usePlayer } from '../context/PlayerContext';
 import { AnalyticsEvents } from '../utils/analytics';
+import { useArtistReleases } from '../hooks/useReleases';
+import { RELEASE_TYPE_LABELS, releaseYear } from '../types/release';
 import { ARTISTS_DATA } from '../data/artists';
 import type { Artist } from '../types/artist';
 import {
   ArrowLeft, Music, ExternalLink, Play, Pause, Video, Camera, Share2,
-  Edit3, Save, X, CheckCircle, ShieldAlert, Loader2,
+  Edit3, Save, X, CheckCircle, ShieldAlert, Loader2, Disc3,
 } from 'lucide-react';
 
 const getYouTubeEmbedUrl = (url?: string): string | null => {
@@ -55,6 +57,7 @@ export const ArtistDetailPage: React.FC = () => {
   // Extrait audio — le champ `audio` existait dans les données de chaque
   // artiste depuis le début sans qu'aucun écran ne l'utilise.
   const { current: playing, isPlaying, play } = usePlayer();
+  const { releases: discography } = useArtistReleases(artistData?.id);
 
   useEffect(() => {
     let cancelled = false;
@@ -398,6 +401,48 @@ export const ArtistDetailPage: React.FC = () => {
             )}
           </div>
         </section>
+
+        {/* ─────────── DISCOGRAPHIE ─────────── */}
+        {discography.length > 0 && (
+          <section className="border-b border-white/10 py-16">
+            <h2 className="flex items-center gap-3 font-mono text-[10px] font-bold uppercase tracking-[0.3em] text-neutral-400">
+              <Disc3 size={13} className="text-void-accent" aria-hidden="true" />
+              Discographie
+              <span className="h-px flex-1 bg-white/10" />
+              <span className="shrink-0 text-neutral-600">{discography.length}</span>
+            </h2>
+
+            <ul className="mt-8 grid grid-cols-2 gap-x-5 gap-y-8 sm:grid-cols-3 lg:grid-cols-4">
+              {discography.map((release) => (
+                <li key={release.id}>
+                  <Link to={`/music/${release.id}`} className="group block">
+                    <div className="aspect-square overflow-hidden border border-neutral-900 bg-neutral-950">
+                      {release.artwork ? (
+                        <img
+                          src={release.artwork}
+                          alt={`Pochette de ${release.title}`}
+                          loading="lazy"
+                          className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
+                        />
+                      ) : (
+                        <div className="flex h-full items-center justify-center text-neutral-800">
+                          <Disc3 size={30} aria-hidden="true" />
+                        </div>
+                      )}
+                    </div>
+                    <p className="mt-3 font-mono text-[9px] uppercase tracking-[0.25em] text-void-accent">
+                      {RELEASE_TYPE_LABELS[release.type]}
+                      {releaseYear(release.releaseDate) && ` · ${releaseYear(release.releaseDate)}`}
+                    </p>
+                    <h3 className="mt-1 text-sm font-black uppercase leading-tight tracking-tight text-white transition-colors group-hover:text-void-accent">
+                      {release.title}
+                    </h3>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
 
         {/* ─────────── VIDÉO ─────────── */}
         <section className="py-16">

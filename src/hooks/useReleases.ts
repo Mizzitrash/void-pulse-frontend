@@ -78,3 +78,23 @@ export function useRelease(id?: string) {
 
   return { release, loading };
 }
+
+/**
+ * Sorties d'un artiste, de la plus récente à la plus ancienne.
+ *
+ * Le filtre est appliqué côté client plutôt qu'avec
+ * `where('artistIds', 'array-contains', id)` : combiné au filtre de
+ * visibilité et au tri, la requête réclamerait un index composite à créer
+ * à la main dans la console. Sur un catalogue de label — quelques dizaines
+ * d'entrées — la différence est nulle, et cela évite une dépendance de
+ * configuration invisible dans le code.
+ */
+export function useArtistReleases(artistId?: string) {
+  const { releases, loading } = useReleases();
+
+  const artistReleases = artistId
+    ? releases.filter((r) => r.artistIds?.includes(artistId))
+    : [];
+
+  return { releases: artistReleases, loading };
+}

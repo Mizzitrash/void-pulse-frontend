@@ -48,7 +48,10 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ onBack }) => {
           id: beat.id,
           title: beat.title,
           producer: beat.producer,
-          price: beat.price,
+          // Nombre et non texte : une commande enregistrée avec « 19,99 € »
+          // ne se totalise ni ne se compare, et rendait toute statistique
+          // de vente impossible.
+          price: beat.priceValue,
         })),
         total: totalPrice,
         status: 'simulated',

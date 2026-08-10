@@ -29,8 +29,49 @@ const NAV_LINKS = [
   { to: '/beats', label: 'Beats' },
   { to: '/actu', label: 'Actu' },
   { to: '/discovery', label: 'Découverte' },
+  { to: '/a-propos', label: 'Le label' },
   { to: '/rejoins-nous', label: 'Rejoins-nous' },
 ];
+
+const NewsletterForm: React.FC = () => {
+  const [email, setEmail] = React.useState('');
+
+  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!email.trim()) {
+      return;
+    }
+
+    // Placeholder d'intégration newsletter : l'API sera branchée ensuite.
+    console.info('Newsletter signup requested:', email);
+    setEmail('');
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="flex flex-col gap-3 sm:flex-row">
+      <label className="sr-only" htmlFor="newsletter-email">
+        Adresse e-mail
+      </label>
+      <input
+        id="newsletter-email"
+        name="email"
+        type="email"
+        value={email}
+        onChange={(event) => setEmail(event.target.value)}
+        placeholder="adresse@mail.com"
+        required
+        className="min-w-0 flex-1 rounded-xl border border-white/10 bg-neutral-900/80 px-4 py-3 font-mono text-[10px] uppercase tracking-[0.2em] text-white outline-none transition placeholder:text-neutral-600 focus:border-void-accent"
+      />
+      <button
+        type="submit"
+        className="inline-flex items-center justify-center rounded-xl border border-void-accent px-5 py-3 font-mono text-[10px] font-bold uppercase tracking-[0.24em] text-void-accent transition-colors hover:bg-void-accent hover:text-white"
+      >
+        S'inscrire
+      </button>
+    </form>
+  );
+};
 
 export const Footer: React.FC = () => {
   const year = new Date().getFullYear();
@@ -128,6 +169,20 @@ export const Footer: React.FC = () => {
                 aria-hidden="true"
               />
             </Link>
+          </div>
+        </div>
+
+        {/* Inscription newsletter — placée avant la ligne légale, la
+            partie du pied de page que l'on parcourt en dernier. */}
+        <div className="mt-12 border-t border-white/5 pt-10">
+          <h2 className="font-mono text-[10px] uppercase tracking-[0.3em] text-neutral-600">
+            Rester informé
+          </h2>
+          <p className="mt-3 max-w-sm text-xs font-light leading-relaxed text-neutral-500">
+            Sorties, coulisses et annonces du label. Rien d'autre.
+          </p>
+          <div className="mt-5 max-w-md">
+            <NewsletterForm />
           </div>
         </div>
 

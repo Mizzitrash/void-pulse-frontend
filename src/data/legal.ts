@@ -36,11 +36,11 @@ interface LegalInfo {
 // aux trois valeurs, puisque c'est toi qui le renseignes.
 export const LEGAL: LegalInfo = {
   /** Nom de la personne ou de la structure qui édite le site. */
-  editorName: '',
+  editorName: 'Kayes',
   /** 'particulier' | 'association' | 'société' */
   editorStatus: 'particulier',
   /** Forme juridique (société uniquement) : SAS, SARL… */
-  legalForm: '',
+  legalForm: 'ASSOCIATION',
   /** Numéro SIREN ou RNA, selon le statut. */
   registrationNumber: '',
   /** Capital social, société uniquement. */
@@ -48,9 +48,9 @@ export const LEGAL: LegalInfo = {
   /** Adresse du siège ou du domicile. Facultatif pour un particulier. */
   address: '',
   /** Nom du directeur de la publication. */
-  publicationDirector: '',
+  publicationDirector: 'Kayes',
   /** Adresse de contact. Obligatoire. */
-  contactEmail: 'voidpulse.contact@gmail.com',
+  contactEmail: 'kayesofficiel@gmail.com',
   /** Date de dernière mise à jour des textes légaux. */
   lastUpdated: '2026-02-01',
 };

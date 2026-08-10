@@ -15,6 +15,9 @@ interface HomePageProps {
     { text: 'faites' },
     { text: 'résonner', accent: true },
     { text: 'votre âme.' },
+    { text: 'Le site est mis à jour souvent.' },
+    { text: 'Mettez à jour les pages,', accent: true },
+    { text: 'régulièrement.' },
   ];
 
 export const HomePage: React.FC<HomePageProps> = () => {

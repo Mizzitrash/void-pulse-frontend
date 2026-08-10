@@ -32,8 +32,10 @@ const SubmissionsPage = lazy(() => import('./pages/SubmissionsPage').then(m => (
 const MusicPage = lazy(() => import('./pages/MusicPage').then(m => ({ default: m.MusicPage })));
 const ReleaseDetailPage = lazy(() => import('./pages/ReleaseDetailPage').then(m => ({ default: m.ReleaseDetailPage })));
 const ReleasesAdminPage = lazy(() => import('./pages/ReleasesAdminPage').then(m => ({ default: m.ReleasesAdminPage })));
+const AboutPage = lazy(() => import('./pages/AboutPage').then(m => ({ default: m.AboutPage })));
 const LegalPage = lazy(() => import('./pages/LegalPage').then(m => ({ default: m.LegalPage })));
 const PrivacyPage = lazy(() => import('./pages/PrivacyPage').then(m => ({ default: m.PrivacyPage })));
+const SubscribersPage = lazy(() => import('./pages/SubscribersPage').then(m => ({ default: m.SubscribersPage })));
 const JoinUsPage = lazy(() => import('./pages/JoinUsPage').then(m => ({ default: m.JoinUsPage })));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage').then(m => ({ default: m.NotFoundPage })));
 
@@ -101,6 +103,14 @@ function NewsPage() {
 
 function ReleasesAdminWrapper() {
   return <MainLayout><ReleasesAdminPage /></MainLayout>;
+}
+
+function SubscribersWrapper() {
+  return <MainLayout><SubscribersPage /></MainLayout>;
+}
+
+function AboutWrapper() {
+  return <MainLayout><AboutPage /></MainLayout>;
 }
 
 function LegalWrapper() {
@@ -228,6 +238,16 @@ export function App() {
                   }
                 />
 
+                <Route
+                  path="/admin/newsletter"
+                  element={
+                    <ProtectedRoute allowedRoles={['COMMUNITY_MANAGER', 'MANAGER', 'ADMIN', 'FONDATEUR']}>
+                      <SubscribersWrapper />
+                    </ProtectedRoute>
+                  }
+                />
+
+                <Route path="/a-propos" element={<AboutWrapper />} />
                 <Route path="/mentions-legales" element={<LegalWrapper />} />
                 <Route path="/confidentialite" element={<PrivacyWrapper />} />
 

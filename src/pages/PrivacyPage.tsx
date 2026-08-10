@@ -47,6 +47,13 @@ const TREATMENTS = [
     duration: 'Durée légale de conservation comptable',
   },
   {
+    what: 'Newsletter',
+    data: 'Adresse e-mail, date du consentement, page d\'inscription',
+    why: 'Envoyer les actualités du label',
+    basis: 'Consentement, révocable à tout moment',
+    duration: "Jusqu'à la demande de désinscription",
+  },
+  {
     what: 'Fiche équipe publique',
     data: 'Nom affiché, fonction, photo, biographie, contacts renseignés',
     why: "Présenter l'équipe sur le site",
@@ -187,8 +194,8 @@ export const PrivacyPage: React.FC = () => {
           , et une fiche équipe se masque d'un clic.
         </p>
         <p>
-          Pour toute autre demande — notamment la suppression d'un compte ou
-          d'une candidature — écris à{' '}
+          Pour toute autre demande — suppression d'un compte, d'une
+          candidature, ou désinscription de la newsletter — écris à{' '}
           <a href={`mailto:${LEGAL.contactEmail}`} className="text-void-accent hover:underline">
             {LEGAL.contactEmail}
           </a>

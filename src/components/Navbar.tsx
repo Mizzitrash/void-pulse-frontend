@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
-import { ShoppingBag, User, LogOut, ShieldAlert, Menu, X, Shield, Sparkles, Inbox } from 'lucide-react';
+import { ShoppingBag, User, LogOut, ShieldAlert, Menu, X, Shield, Sparkles, Inbox, Disc3 } from 'lucide-react';
 
 export const Navbar: React.FC = () => {
   const { profile, logout, hasPermission } = useAuth();
@@ -70,6 +70,9 @@ export const Navbar: React.FC = () => {
         <Link to="/" aria-current={isActive('/') ? 'page' : undefined} className={desktopLink('/')}>
           Accueil
         </Link>
+        <Link to="/music" aria-current={isActive('/music') ? 'page' : undefined} className={desktopLink('/music')}>
+          Musique
+        </Link>
         <Link to="/beats" aria-current={isActive('/beats') ? 'page' : undefined} className={desktopLink('/beats')}>
           Beats
         </Link>
@@ -78,6 +81,9 @@ export const Navbar: React.FC = () => {
         </Link>
         <Link to="/discovery" aria-current={isActive('/discovery') ? 'page' : undefined} className={desktopLink('/discovery')}>
           Découverte
+        </Link>
+        <Link to="/a-propos" aria-current={isActive('/a-propos') ? 'page' : undefined} className={desktopLink('/a-propos')}>
+          Le label
         </Link>
 
         {/* Appel à candidature : traité comme une action, pas comme un simple
@@ -94,6 +100,19 @@ export const Navbar: React.FC = () => {
           <Sparkles size={14} aria-hidden="true" />
           <span>Rejoins-nous</span>
         </Link>
+
+        {isManager && (
+          <Link
+            to="/admin/sorties"
+            aria-current={isActive('/admin/sorties') ? 'page' : undefined}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded border border-cyan-700/50 bg-cyan-950/30 text-cyan-400 hover:bg-cyan-700 hover:text-white transition-all ${
+              isActive('/admin/sorties') ? 'bg-cyan-700 text-white' : ''
+            }`}
+          >
+            <Disc3 size={14} aria-hidden="true" />
+            <span>Sorties</span>
+          </Link>
+        )}
 
         {isManager && (
           <Link
@@ -215,6 +234,9 @@ export const Navbar: React.FC = () => {
           <button onClick={() => handleLinkClick('/')} className={mobileLink('/')}>
             Accueil
           </button>
+          <button onClick={() => handleLinkClick('/music')} className={mobileLink('/music')}>
+            Musique
+          </button>
           <button onClick={() => handleLinkClick('/beats')} className={mobileLink('/beats')}>
             Beats
           </button>
@@ -224,6 +246,9 @@ export const Navbar: React.FC = () => {
           <button onClick={() => handleLinkClick('/discovery')} className={mobileLink('/discovery')}>
             Découverte
           </button>
+          <button onClick={() => handleLinkClick('/a-propos')} className={mobileLink('/a-propos')}>
+            Le label
+          </button>
           <button
             onClick={() => handleLinkClick('/rejoins-nous')}
             className="text-left text-sm font-mono uppercase py-2 border-b border-neutral-900 text-void-accent font-bold flex items-center gap-2"
@@ -231,6 +256,13 @@ export const Navbar: React.FC = () => {
             <Sparkles size={16} aria-hidden="true" />
             <span>Rejoins-nous</span>
           </button>
+
+          {isManager && (
+            <button onClick={() => handleLinkClick('/admin/sorties')} className="text-left text-sm font-mono uppercase py-2 border-b border-neutral-900 text-cyan-400 flex items-center gap-2">
+              <Disc3 size={16} aria-hidden="true" />
+              <span>Sorties</span>
+            </button>
+          )}
 
           {isManager && (
             <button onClick={() => handleLinkClick('/candidatures')} className="text-left text-sm font-mono uppercase py-2 border-b border-neutral-900 text-cyan-400 flex items-center gap-2">

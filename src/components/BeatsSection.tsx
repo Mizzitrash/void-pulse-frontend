@@ -1,10 +1,12 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { useDocumentMeta } from '../hooks/useDocumentMeta';
 import { usePlayer, type PlayerTrack } from '../context/PlayerContext';
-import { BEATS_DATA, type Beat, type BeatStatus } from '../data/beats';
-import { Play, Pause, Lock, Clock } from 'lucide-react';
+import { type BeatStatus } from '../data/beats';
+import { useBeats, type ShopBeat } from '../hooks/useBeats';
+import { Play, Pause, Lock, Clock, Loader2, User } from 'lucide-react';
 
 interface BeatsSectionProps {
   onOpenAuth: () => void;
@@ -19,11 +21,12 @@ export const BeatsSection: React.FC<BeatsSectionProps> = ({ onOpenAuth }) => {
   const { addToCart } = useCart();
   const { firebaseUser } = useAuth();
   const { current, isPlaying, play } = usePlayer();
+  const { beats, loading } = useBeats();
 
   // La lecture passe désormais par le lecteur global : le catalogue
   // entier devient la file d'attente, si bien que le morceau suivant
   // s'enchaîne et que l'écoute continue quand on quitte la page.
-  const toTrack = (beat: Beat): PlayerTrack => ({
+  const toTrack = (beat: ShopBeat): PlayerTrack => ({
     id: beat.id,
     title: beat.title,
     subtitle: `Prod. ${beat.producer}`,
@@ -32,9 +35,9 @@ export const BeatsSection: React.FC<BeatsSectionProps> = ({ onOpenAuth }) => {
     href: '/beats',
   });
 
-  const playableQueue = BEATS_DATA.filter((b) => b.status !== 'sold').map(toTrack);
+  const playableQueue = beats.filter((b) => b.status !== 'sold' && b.audioUrl).map(toTrack);
 
-  const handleAcquireBeat = (beat: Beat) => {
+  const handleAcquireBeat = (beat: ShopBeat) => {
     if (!firebaseUser) {
       onOpenAuth();
       return;
@@ -60,7 +63,7 @@ export const BeatsSection: React.FC<BeatsSectionProps> = ({ onOpenAuth }) => {
     return null;
   };
 
-  const availableCount = BEATS_DATA.filter((b) => b.status === 'available').length;
+  const availableCount = beats.filter((b) => b.status === 'available').length;
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-16">
@@ -80,11 +83,18 @@ export const BeatsSection: React.FC<BeatsSectionProps> = ({ onOpenAuth }) => {
         </p>
       </header>
 
+      {loading && (
+        <p className="flex items-center gap-2 pb-4 font-mono text-[10px] uppercase tracking-wider text-neutral-600">
+          <Loader2 size={12} className="animate-spin" aria-hidden="true" />
+          Chargement des prods du roster…
+        </p>
+      )}
+
       {/* Tracklist : chaque prod est une ligne, comme sur un projet. Les
           métadonnées techniques (BPM, tonalité) sont alignées en colonne
           pour qu'on puisse les comparer d'un regard vertical. */}
       <ul className="divide-y divide-neutral-900 border-y border-neutral-900">
-        {BEATS_DATA.map((beat, index) => {
+        {beats.map((beat, index) => {
           const isCurrent = current?.id === beat.id;
           const isThisPlaying = isCurrent && isPlaying;
           const isSold = beat.status === 'sold';
@@ -110,7 +120,7 @@ export const BeatsSection: React.FC<BeatsSectionProps> = ({ onOpenAuth }) => {
                 <div className="flex flex-1 items-center gap-4">
                   <button
                     onClick={() => play(toTrack(beat), playableQueue)}
-                    disabled={isSold}
+                    disabled={isSold || !beat.audioUrl}
                     className={`flex h-12 w-12 shrink-0 items-center justify-center transition-all ${
                       isSold
                         ? 'cursor-not-allowed bg-neutral-900 text-neutral-700'
@@ -144,7 +154,18 @@ export const BeatsSection: React.FC<BeatsSectionProps> = ({ onOpenAuth }) => {
                       {statusBadge(beat.status)}
                     </div>
                     <p className="mt-1 font-mono text-[10px] uppercase tracking-widest text-neutral-500">
-                      Prod. <span className="text-neutral-300">{beat.producer}</span>
+                      Prod.{' '}
+                      {beat.artistId ? (
+                        <Link
+                          to={`/artists/${beat.artistId}`}
+                          className="inline-flex items-center gap-1 text-neutral-300 transition-colors hover:text-void-accent"
+                        >
+                          <User size={9} aria-hidden="true" />
+                          {beat.producer}
+                        </Link>
+                      ) : (
+                        <span className="text-neutral-300">{beat.producer}</span>
+                      )}
                     </p>
                   </div>
                 </div>
