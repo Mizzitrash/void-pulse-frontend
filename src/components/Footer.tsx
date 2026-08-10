@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Camera, Video, Music2, Disc3, Mail, ArrowUpRight } from 'lucide-react';
+import { Camera, Video, Music2, Mail, ArrowUpRight } from 'lucide-react';
 
 /* ═══════════════════════════════════════════════════════════════════
    À REMPLIR — remplace ces valeurs par tes vrais comptes.
@@ -10,20 +10,22 @@ import { Camera, Video, Music2, Disc3, Mail, ArrowUpRight } from 'lucide-react';
 const CONTACTS = {
   email: 'voidpulse.contact@gmail.com',
   instagram: 'https://www.instagram.com/_void.pulse_/',
-  youtube: 'https://www.youtube.com/@VOIDPULSE',
-  tiktok: 'https://www.tiktok.com/@voidpulselabel',
+  youtube: 'https://www.youtube.com/@VØIDPULSEofficiel',
+  tiktok: 'https://www.tiktok.com/@voidpulselabel?lang=fr',
   spotify: '',
 };
+
 
 const SOCIALS = [
   { key: 'instagram', label: 'Instagram', icon: Camera, url: CONTACTS.instagram },
   { key: 'youtube', label: 'YouTube', icon: Video, url: CONTACTS.youtube },
   { key: 'tiktok', label: 'TikTok', icon: Music2, url: CONTACTS.tiktok },
-  { key: 'spotify', label: 'Spotify', icon: Disc3, url: CONTACTS.spotify },
+  { key: 'spotify', label: 'Spotify', icon: Music2, url: CONTACTS.spotify },
 ].filter((s) => s.url.trim() !== '');
 
 const NAV_LINKS = [
   { to: '/', label: 'Accueil' },
+  { to: '/music', label: 'Musique' },
   { to: '/beats', label: 'Beats' },
   { to: '/actu', label: 'Actu' },
   { to: '/discovery', label: 'Découverte' },
@@ -109,7 +111,11 @@ export const Footer: React.FC = () => {
                   </li>
                 ))}
               </ul>
-            ) : null}
+            ) : (
+              <p className="mt-4 font-mono text-[10px] leading-relaxed text-neutral-600">
+                Réseaux à renseigner dans Footer.tsx
+              </p>
+            )}
 
             <Link
               to="/rejoins-nous"
@@ -129,9 +135,23 @@ export const Footer: React.FC = () => {
           <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-neutral-600">
             © {year} VØID PULSE
           </p>
-          <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-neutral-700">
-            Pulse from the void
-          </p>
+          <nav aria-label="Liens légaux" className="flex flex-wrap items-center gap-x-5 gap-y-2">
+            <Link
+              to="/mentions-legales"
+              className="font-mono text-[10px] uppercase tracking-[0.2em] text-neutral-600 transition-colors hover:text-neutral-300"
+            >
+              Mentions légales
+            </Link>
+            <Link
+              to="/confidentialite"
+              className="font-mono text-[10px] uppercase tracking-[0.2em] text-neutral-600 transition-colors hover:text-neutral-300"
+            >
+              Confidentialité
+            </Link>
+            <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-neutral-700">
+              Pulse from the void
+            </span>
+          </nav>
         </div>
       </div>
     </footer>

@@ -1,9 +1,10 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React from 'react';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { useDocumentMeta } from '../hooks/useDocumentMeta';
+import { usePlayer, type PlayerTrack } from '../context/PlayerContext';
 import { BEATS_DATA, type Beat, type BeatStatus } from '../data/beats';
-import { Play, Pause, Volume2, VolumeX, Lock, Clock, X, ShoppingBag } from 'lucide-react';
+import { Play, Pause, Lock, Clock } from 'lucide-react';
 
 interface BeatsSectionProps {
   onOpenAuth: () => void;
@@ -17,24 +18,21 @@ export const BeatsSection: React.FC<BeatsSectionProps> = ({ onOpenAuth }) => {
 
   const { addToCart } = useCart();
   const { firebaseUser } = useAuth();
+  const { current, isPlaying, play } = usePlayer();
 
-  const [currentBeat, setCurrentBeat] = useState<Beat | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [isMuted, setIsMuted] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  // La lecture passe désormais par le lecteur global : le catalogue
+  // entier devient la file d'attente, si bien que le morceau suivant
+  // s'enchaîne et que l'écoute continue quand on quitte la page.
+  const toTrack = (beat: Beat): PlayerTrack => ({
+    id: beat.id,
+    title: beat.title,
+    subtitle: `Prod. ${beat.producer}`,
+    artwork: beat.coverUrl,
+    src: beat.audioUrl,
+    href: '/beats',
+  });
 
-  // Barre de progression : sans repère temporel, on ne sait pas si un
-  // extrait dure dix secondes ou deux minutes, ni où on en est.
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    const onTime = () => {
-      if (audio.duration) setProgress((audio.currentTime / audio.duration) * 100);
-    };
-    audio.addEventListener('timeupdate', onTime);
-    return () => audio.removeEventListener('timeupdate', onTime);
-  }, []);
+  const playableQueue = BEATS_DATA.filter((b) => b.status !== 'sold').map(toTrack);
 
   const handleAcquireBeat = (beat: Beat) => {
     if (!firebaseUser) {
@@ -42,42 +40,6 @@ export const BeatsSection: React.FC<BeatsSectionProps> = ({ onOpenAuth }) => {
       return;
     }
     addToCart(beat);
-  };
-
-  const togglePlay = (beat: Beat) => {
-    if (beat.status === 'sold') return;
-
-    if (currentBeat?.id === beat.id) {
-      if (isPlaying) {
-        audioRef.current?.pause();
-        setIsPlaying(false);
-      } else {
-        audioRef.current?.play();
-        setIsPlaying(true);
-      }
-    } else {
-      setCurrentBeat(beat);
-      setProgress(0);
-      setIsPlaying(true);
-      if (audioRef.current) {
-        audioRef.current.src = beat.audioUrl;
-        audioRef.current.play();
-      }
-    }
-  };
-
-  const stopPlayback = () => {
-    audioRef.current?.pause();
-    setIsPlaying(false);
-    setCurrentBeat(null);
-    setProgress(0);
-  };
-
-  const toggleMute = () => {
-    if (audioRef.current) {
-      audioRef.current.muted = !isMuted;
-      setIsMuted(!isMuted);
-    }
   };
 
   const statusBadge = (status: BeatStatus) => {
@@ -102,7 +64,6 @@ export const BeatsSection: React.FC<BeatsSectionProps> = ({ onOpenAuth }) => {
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-16">
-      <audio ref={audioRef} onEnded={() => { setIsPlaying(false); setProgress(0); }} />
 
       <header className="mb-12 flex flex-col justify-between gap-6 border-b border-white/10 pb-8 md:flex-row md:items-end">
         <div>
@@ -124,7 +85,7 @@ export const BeatsSection: React.FC<BeatsSectionProps> = ({ onOpenAuth }) => {
           pour qu'on puisse les comparer d'un regard vertical. */}
       <ul className="divide-y divide-neutral-900 border-y border-neutral-900">
         {BEATS_DATA.map((beat, index) => {
-          const isCurrent = currentBeat?.id === beat.id;
+          const isCurrent = current?.id === beat.id;
           const isThisPlaying = isCurrent && isPlaying;
           const isSold = beat.status === 'sold';
 
@@ -148,7 +109,7 @@ export const BeatsSection: React.FC<BeatsSectionProps> = ({ onOpenAuth }) => {
 
                 <div className="flex flex-1 items-center gap-4">
                   <button
-                    onClick={() => togglePlay(beat)}
+                    onClick={() => play(toTrack(beat), playableQueue)}
                     disabled={isSold}
                     className={`flex h-12 w-12 shrink-0 items-center justify-center transition-all ${
                       isSold
@@ -230,70 +191,6 @@ export const BeatsSection: React.FC<BeatsSectionProps> = ({ onOpenAuth }) => {
         })}
       </ul>
 
-      {/* ─────────── LECTEUR ─────────── */}
-      {currentBeat && (
-        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-neutral-800 bg-black/95 backdrop-blur-lg">
-          <div
-            className="h-0.5 bg-void-accent transition-[width] duration-300"
-            style={{ width: `${progress}%` }}
-            role="progressbar"
-            aria-valuenow={Math.round(progress)}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-label="Progression de la lecture"
-          />
-
-          <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-3.5">
-            <div className="flex min-w-0 items-center gap-4">
-              <img src={currentBeat.coverUrl} alt="" className="h-11 w-11 shrink-0 border border-white/10 object-cover" />
-              <div className="min-w-0">
-                <p className="truncate text-sm font-black uppercase tracking-tight text-white">
-                  {currentBeat.title}
-                </p>
-                <p className="font-mono text-[10px] uppercase tracking-widest text-neutral-500">
-                  {currentBeat.producer}
-                </p>
-              </div>
-            </div>
-
-            <div className="flex shrink-0 items-center gap-2">
-              <button
-                onClick={() => handleAcquireBeat(currentBeat)}
-                className="mr-2 hidden items-center gap-2 border border-void-accent px-4 py-2 font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-void-accent transition-all hover:bg-void-accent hover:text-white sm:flex"
-              >
-                <ShoppingBag size={13} aria-hidden="true" /> {currentBeat.price}
-              </button>
-
-              <button
-                onClick={() => togglePlay(currentBeat)}
-                className="flex h-10 w-10 items-center justify-center bg-white text-black transition-colors hover:bg-void-accent hover:text-white"
-                aria-label={isPlaying ? 'Pause' : 'Lecture'}
-              >
-                {isPlaying ? <Pause size={16} aria-hidden="true" /> : <Play size={16} className="ml-0.5" aria-hidden="true" />}
-              </button>
-
-              <button
-                onClick={toggleMute}
-                className="p-2 text-neutral-400 transition-colors hover:text-white"
-                aria-label={isMuted ? 'Réactiver le son' : 'Couper le son'}
-              >
-                {isMuted ? <VolumeX size={18} aria-hidden="true" /> : <Volume2 size={18} aria-hidden="true" />}
-              </button>
-
-              {/* Fermeture du lecteur : il n'existait aucun moyen de s'en
-                  débarrasser une fois ouvert, il masquait le bas de page
-                  jusqu'au changement de page. */}
-              <button
-                onClick={stopPlayback}
-                className="p-2 text-neutral-500 transition-colors hover:text-white"
-                aria-label="Fermer le lecteur"
-              >
-                <X size={18} aria-hidden="true" />
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

@@ -6,7 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { useDocumentMeta } from '../hooks/useDocumentMeta';
 import {
   ArrowLeft, Save, Plus, Trash2, Video, Music, Image as ImageIcon,
-  Loader2, ShieldAlert, Share2,
+  Loader2, ShieldAlert, Share2, Eye, EyeOff,
 } from 'lucide-react';
 
 interface Beat {
@@ -43,6 +43,7 @@ export const EditArtistPage: React.FC = () => {
     instagramUrl: '',
     tiktokUrl: '',
     beats: [] as Beat[],
+    visible: true,
   });
 
   const [newBeat, setNewBeat] = useState<Beat>({
@@ -84,6 +85,9 @@ export const EditArtistPage: React.FC = () => {
             instagramUrl: data.instagramUrl || '',
             tiktokUrl: data.tiktokUrl || '',
             beats: data.beats || [],
+            // Absent = visible : les pages antérieures à ce réglage
+            // ne doivent pas disparaître du roster.
+            visible: data.visible !== false,
           });
         }
       } catch (error) {
@@ -368,6 +372,45 @@ export const EditArtistPage: React.FC = () => {
               </div>
             ))}
           </div>
+        </section>
+
+        {/* ─────────── VISIBILITÉ ─────────── */}
+        <section>
+          <h2 className={sectionHead}>
+            {formData.visible
+              ? <Eye size={13} className="text-void-accent" aria-hidden="true" />
+              : <EyeOff size={13} className="text-neutral-600" aria-hidden="true" />}
+            Visibilité
+            <span className="h-px flex-1 bg-white/10" />
+          </h2>
+
+          <button
+            type="button"
+            onClick={() => setFormData({ ...formData, visible: !formData.visible })}
+            className={`mt-6 flex w-full items-center justify-between gap-4 border p-5 text-left transition-colors ${
+              formData.visible
+                ? 'border-emerald-800/40 bg-emerald-950/20'
+                : 'border-neutral-800 bg-neutral-950'
+            }`}
+          >
+            <span>
+              <span className={`block font-mono text-xs font-bold uppercase tracking-wider ${
+                formData.visible ? 'text-emerald-400' : 'text-neutral-400'
+              }`}>
+                {formData.visible ? 'Visible dans le roster' : 'Masquée du roster'}
+              </span>
+              <span className="mt-1.5 block font-mono text-[10px] leading-relaxed text-neutral-600">
+                {formData.visible
+                  ? "Cette page apparaît sur la page d'accueil."
+                  : "La page reste accessible par son adresse, mais n'apparaît pas sur l'accueil. Pratique pour la préparer avant de la publier."}
+              </span>
+            </span>
+            <span className={`flex h-7 w-12 shrink-0 items-center px-1 transition-colors ${
+              formData.visible ? 'justify-end bg-emerald-600' : 'justify-start bg-neutral-800'
+            }`}>
+              <span className="h-5 w-5 bg-white" />
+            </span>
+          </button>
         </section>
 
         {saveError && (

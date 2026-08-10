@@ -1,43 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { motion, useReducedMotion } from 'framer-motion';
-import { ARTISTS_DATA } from '../data/artists';
 import { BEATS_DATA } from '../data/beats';
-import { collection, getCountFromServer } from 'firebase/firestore';
-import { db } from '../firebase';
+import { useArtists } from '../hooks/useArtists';
 import { ArrowRight, Disc3, Users, Radio } from 'lucide-react';
 
 interface HomePageProps {
   showIntro: boolean;
 }
 
-export const HomePage: React.FC<HomePageProps> = () => {
-  const navigate = useNavigate();
-  const reduceMotion = useReducedMotion();
-
-  // Nombre réel de pages artistes en base. getCountFromServer compte sans
-  // télécharger les documents — inutile de rapatrier sept fiches complètes
-  // pour afficher un chiffre. On part du décompte statique en attendant la
-  // réponse, pour que le bloc n'affiche jamais un zéro transitoire.
-  const [artistCount, setArtistCount] = useState(ARTISTS_DATA.length);
-
-  useEffect(() => {
-    getCountFromServer(collection(db, 'artists'))
-      .then((snap) => {
-        const n = snap.data().count;
-        if (n > 0) setArtistCount(n);
-      })
-      .catch((error) => console.error('Comptage des artistes :', error));
-  }, []);
-
-  // La phrase n'apparaissant qu'une fois, on ne peut pas boucler par
-  // duplication : on la fait traverser l'écran de droite à gauche, puis
-  // le cycle recommence. Régler la vitesse via la durée dans le style.
-  //
-  // Découpée en segments pour donner un rythme de lecture : le lettrage
-  // est en contour (creux), et seuls les mots porteurs sont pleins. L'œil
-  // accroche donc sur "Revivez la musique" et "résonner" plutôt que de
-  // glisser sur une ligne uniforme.
   const MANIFESTO: Array<{ text: string; accent?: boolean }> = [
     { text: 'Une nouvelle ère est née.' },
     { text: 'Revivez la musique,', accent: true },
@@ -45,6 +16,17 @@ export const HomePage: React.FC<HomePageProps> = () => {
     { text: 'résonner', accent: true },
     { text: 'votre âme.' },
   ];
+
+export const HomePage: React.FC<HomePageProps> = () => {
+  const navigate = useNavigate();
+  const reduceMotion = useReducedMotion();
+
+  // Même source que le roster : compter les documents séparément
+  // aurait inclus les pages masquées, donnant un chiffre différent de ce
+  // que le visiteur voit juste en dessous.
+  const artists = useArtists();
+  const artistCount = artists.length;
+
   const marqueeText = MANIFESTO.map((p) => p.text).join(' ');
 
   const fadeUp = {

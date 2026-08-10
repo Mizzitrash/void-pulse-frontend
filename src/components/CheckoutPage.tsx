@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { useDocumentMeta } from '../hooks/useDocumentMeta';
+import { AnalyticsEvents } from '../utils/analytics';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
 import { ArrowLeft, ShieldCheck, CreditCard, CheckCircle2, Loader2, Lock } from 'lucide-react';
@@ -54,6 +55,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ onBack }) => {
         createdAt: serverTimestamp(),
       });
 
+      AnalyticsEvents.purchase(totalPrice, cart.length);
       setIsSuccess(true);
       clearCart();
     } catch (error) {

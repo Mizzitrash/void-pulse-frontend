@@ -203,6 +203,15 @@ service cloud.firestore {
       allow write: if isAdminOrFounder();
     }
 
+  // --- Collection releases (sorties musicales) ---
+    // Le catalogue est public en lecture ; sa gestion revient au manager,
+    // qui suit déjà le roster et les candidatures.
+
+    match /releases/{releaseId} {
+      allow read: if true;
+      allow create, update, delete: if isManager() || isAdminOrFounder();
+    }
+
     // Tout le reste est refusé par défaut.
   }
 }

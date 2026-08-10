@@ -4,6 +4,7 @@ import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../firebase';
 import { useDocumentMeta } from '../hooks/useDocumentMeta';
+import { AnalyticsEvents } from '../utils/analytics';
 import { Send, Upload, CheckCircle2, Loader2, X, Link2, FileAudio, ArrowRight } from 'lucide-react';
 
 const MAX_MESSAGE = 1000;
@@ -118,6 +119,7 @@ export const JoinUsPage: React.FC = () => {
         createdAt: serverTimestamp(),
       });
 
+      AnalyticsEvents.joinVoid();
       setIsSent(true);
     } catch (err) {
       console.error("Erreur lors de l'envoi de la candidature :", err);

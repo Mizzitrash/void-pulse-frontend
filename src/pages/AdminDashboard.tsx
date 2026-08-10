@@ -247,6 +247,10 @@ export const AdminDashboard: React.FC = () => {
           genre: '', bio: '', image: '',
           spotifyUrl: '', youtubeUrl: '', instagramUrl: '', tiktokUrl: '', youtubeClip: '',
           ownerUid: linkingUser.uid,
+          // Masquée à la création : une page encore vide ne doit pas
+          // apparaître sur la page d'accueil. L'artiste la rend visible
+          // depuis son formulaire d'édition une fois remplie.
+          visible: false,
           createdAt: new Date().toISOString(),
         });
         tx.update(userRef, { roles: updatedRoles, artistId: finalSlug });

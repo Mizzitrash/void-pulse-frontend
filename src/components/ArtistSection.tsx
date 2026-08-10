@@ -1,62 +1,13 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, useReducedMotion } from 'framer-motion';
-import { collection, getDocs } from 'firebase/firestore';
-import { db } from '../firebase';
-import { ARTISTS_DATA } from '../data/artists';
-import type { Artist } from '../types/artist';
+import { useArtists } from '../hooks/useArtists';
 import { ArrowUpRight } from 'lucide-react';
 
 export const ArtistSection: React.FC = () => {
   const navigate = useNavigate();
   const reduceMotion = useReducedMotion();
-
-  // On démarre sur les données statiques plutôt que sur un écran de
-  // chargement : le roster est en haut de la page d'accueil, il doit
-  // s'afficher immédiatement. Les données Firestore le remplacent ensuite,
-  // sans que le visiteur voie jamais de vide.
-  const [artists, setArtists] = useState<Artist[]>(ARTISTS_DATA);
-
-  useEffect(() => {
-    const sync = async () => {
-      try {
-        const snap = await getDocs(collection(db, 'artists'));
-        if (snap.empty) return;
-
-        const fromDb = new Map<string, Artist>();
-        snap.docs.forEach((d) => {
-          fromDb.set(d.id, { id: d.id, ...(d.data() as Omit<Artist, 'id'>) });
-        });
-
-        // Les artistes du fichier statique gardent leur ordre — c'est
-        // l'ordre d'affichage voulu — mais leur contenu vient de Firestore
-        // dès qu'une fiche y existe. Sans cette fusion, une modification
-        // faite depuis la page artiste restait invisible ici.
-        const merged: Artist[] = ARTISTS_DATA.map((staticArtist) => {
-          const live = fromDb.get(staticArtist.id);
-          fromDb.delete(staticArtist.id);
-          // Le fichier statique conserve des champs absents de Firestore
-          // (notamment `audio`) : on superpose plutôt que de remplacer.
-          return live ? { ...staticArtist, ...live } : staticArtist;
-        });
-
-        // Les pages créées depuis l'admin n'existent pas dans le fichier
-        // statique : sans cet ajout, un artiste signé après coup
-        // n'apparaissait jamais dans le roster.
-        const newcomers = Array.from(fromDb.values()).sort((a, b) =>
-          (a.name || '').localeCompare(b.name || '')
-        );
-
-        setArtists([...merged, ...newcomers]);
-      } catch (error) {
-        // En cas d'échec réseau, on reste sur les données statiques
-        // affichées : mieux vaut un roster figé qu'une section vide.
-        console.error('Synchronisation du roster :', error);
-      }
-    };
-
-    sync();
-  }, []);
+  const artists = useArtists();
 
   const fadeUp = {
     hidden: { opacity: 0, y: reduceMotion ? 0 : 20 },

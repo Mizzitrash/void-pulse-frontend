@@ -1,9 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../context/AuthContext';
 import { useDocumentMeta } from '../hooks/useDocumentMeta';
+import { usePlayer } from '../context/PlayerContext';
+import { AnalyticsEvents } from '../utils/analytics';
 import { ARTISTS_DATA } from '../data/artists';
 import type { Artist } from '../types/artist';
 import {
@@ -52,8 +54,7 @@ export const ArtistDetailPage: React.FC = () => {
 
   // Extrait audio — le champ `audio` existait dans les données de chaque
   // artiste depuis le début sans qu'aucun écran ne l'utilise.
-  const [isPlaying, setIsPlaying] = useState(false);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const { current: playing, isPlaying, play } = usePlayer();
 
   useEffect(() => {
     let cancelled = false;
@@ -85,12 +86,9 @@ export const ArtistDetailPage: React.FC = () => {
     return () => { cancelled = true; };
   }, [id]);
 
-  // Coupe la lecture au changement d'artiste : sans cela, l'extrait
-  // continuait par-dessus la page suivante.
   useEffect(() => {
-    audioRef.current?.pause();
-    setIsPlaying(false);
-  }, [id]);
+    if (artistData) AnalyticsEvents.artistView(artistData.id, artistData.name);
+  }, [artistData?.id]);
 
   useDocumentMeta({
     title: artistData?.name,
@@ -168,18 +166,6 @@ export const ArtistDetailPage: React.FC = () => {
     }
   };
 
-  const toggleAudio = () => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    if (isPlaying) {
-      audio.pause();
-      setIsPlaying(false);
-    } else {
-      audio.play().catch(() => setIsPlaying(false));
-      setIsPlaying(true);
-    }
-  };
-
   const cover = view('image') || '/logo.png';
   const embedUrl = getYouTubeEmbedUrl(view('youtubeClip'));
   const audioSrc = artistData.audio;
@@ -198,10 +184,6 @@ export const ArtistDetailPage: React.FC = () => {
 
   return (
     <div className="pb-24">
-      {audioSrc && (
-        <audio ref={audioRef} src={audioSrc} onEnded={() => setIsPlaying(false)} preload="none" />
-      )}
-
       {SHOW_DEBUG && (
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-yellow-500/30 bg-yellow-500/10 px-4 py-2 font-mono text-[11px] text-yellow-300">
           <span className="flex items-center gap-2 font-bold uppercase tracking-wider">
@@ -314,13 +296,26 @@ export const ArtistDetailPage: React.FC = () => {
 
               {audioSrc && (
                 <button
-                  onClick={toggleAudio}
+                  onClick={() =>
+                    play({
+                      id: `artist-${artistData.id}`,
+                      title: artistData.name,
+                      subtitle: artistData.genre || 'Extrait',
+                      artwork: artistData.image,
+                      src: audioSrc,
+                      href: `/artists/${artistData.id}`,
+                    })
+                  }
                   className="mt-8 flex w-fit items-center gap-3 border border-white/20 bg-black/50 px-5 py-3 font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-white backdrop-blur transition-all hover:border-void-accent hover:bg-void-accent"
                 >
                   <span className="flex h-7 w-7 items-center justify-center rounded-full bg-void-accent">
-                    {isPlaying ? <Pause size={13} aria-hidden="true" /> : <Play size={13} className="ml-0.5" aria-hidden="true" />}
+                    {playing?.id === `artist-${artistData.id}` && isPlaying
+                      ? <Pause size={13} aria-hidden="true" />
+                      : <Play size={13} className="ml-0.5" aria-hidden="true" />}
                   </span>
-                  {isPlaying ? 'Pause' : 'Écouter un extrait'}
+                  {playing?.id === `artist-${artistData.id}` && isPlaying
+                    ? 'Pause'
+                    : 'Écouter un extrait'}
                 </button>
               )}
             </>

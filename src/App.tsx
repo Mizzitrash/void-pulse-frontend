@@ -1,14 +1,13 @@
 import { useState, lazy, Suspense } from 'react';
-import { BrowserRouter as Router, Routes, Route, useNavigate, Link } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, useNavigate } from 'react-router-dom';
 import { CartProvider } from './context/CartContext';
 import { AuthProvider } from './context/AuthContext';
+import { PlayerProvider } from './context/PlayerContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { Navbar } from './components/Navbar';
 import { IntroScreen } from './components/IntroScreen';
 import { ArtistSection } from './components/ArtistSection';
 import { TeamSection } from './components/TeamSection';
-import { CartDrawer } from './components/CartDrawer';
-import { Footer } from './components/Footer';
+import { MainLayout } from './components/MainLayout';
 import { HomePage } from './pages/HomePage';
 // ProtectedRoute reste en import direct : il ne pèse que ~0,5 Ko, et le
 // charger en lazy créait une cascade réseau — il fallait attendre son
@@ -30,7 +29,13 @@ const AdminDashboard = lazy(() => import('./pages/AdminDashboard').then(m => ({ 
 const ArtistDetailPage = lazy(() => import('./pages/ArtistDetailPage').then(m => ({ default: m.ArtistDetailPage })));
 const EditArtistPage = lazy(() => import('./pages/EditArtistPage').then(m => ({ default: m.EditArtistPage })));
 const SubmissionsPage = lazy(() => import('./pages/SubmissionsPage').then(m => ({ default: m.SubmissionsPage })));
+const MusicPage = lazy(() => import('./pages/MusicPage').then(m => ({ default: m.MusicPage })));
+const ReleaseDetailPage = lazy(() => import('./pages/ReleaseDetailPage').then(m => ({ default: m.ReleaseDetailPage })));
+const ReleasesAdminPage = lazy(() => import('./pages/ReleasesAdminPage').then(m => ({ default: m.ReleasesAdminPage })));
+const LegalPage = lazy(() => import('./pages/LegalPage').then(m => ({ default: m.LegalPage })));
+const PrivacyPage = lazy(() => import('./pages/PrivacyPage').then(m => ({ default: m.PrivacyPage })));
 const JoinUsPage = lazy(() => import('./pages/JoinUsPage').then(m => ({ default: m.JoinUsPage })));
+const NotFoundPage = lazy(() => import('./pages/NotFoundPage').then(m => ({ default: m.NotFoundPage })));
 
 const INTRO_SESSION_KEY = 'void-pulse-intro-shown';
 
@@ -65,30 +70,6 @@ function RouteFallback() {
   );
 }
 
-function MainLayout({ children }: { children: React.ReactNode }) {
-  const navigate = useNavigate();
-
-  return (
-    <div className="min-h-screen bg-black text-white relative selection:bg-void-accent selection:text-white pt-20">
-      {/* Lien d'évitement : permet à un utilisateur au clavier de sauter
-          la navigation. Invisible tant qu'il n'a pas le focus. */}
-      <a
-        href="#contenu-principal"
-        className="sr-only focus:not-sr-only focus:absolute focus:top-24 focus:left-4 focus:z-100 focus:px-4 focus:py-2 focus:bg-void-accent focus:text-white focus:rounded-xl focus:text-xs focus:font-mono focus:font-bold focus:uppercase"
-      >
-        Aller au contenu
-      </a>
-      <Navbar />
-      {/* <main> plutôt qu'un <div> neutre : c'est le repère que les lecteurs
-          d'écran utilisent pour sauter directement au contenu. Il n'y en
-          avait aucun sur les pages autres que l'accueil. */}
-      <main id="contenu-principal">{children}</main>
-      <Footer />
-      <CartDrawer onGoToCheckout={() => navigate('/checkout')} />
-    </div>
-  );
-}
-
 function HomeWrapper({ showIntro, setShowIntro }: { showIntro: boolean; setShowIntro: (v: boolean) => void }) {
   return (
     <MainLayout>
@@ -116,6 +97,26 @@ function BeatsPage() {
 
 function NewsPage() {
   return <MainLayout><NewsSection /></MainLayout>;
+}
+
+function ReleasesAdminWrapper() {
+  return <MainLayout><ReleasesAdminPage /></MainLayout>;
+}
+
+function LegalWrapper() {
+  return <MainLayout><LegalPage /></MainLayout>;
+}
+
+function PrivacyWrapper() {
+  return <MainLayout><PrivacyPage /></MainLayout>;
+}
+
+function MusicWrapper() {
+  return <MainLayout><MusicPage /></MainLayout>;
+}
+
+function ReleaseWrapper() {
+  return <MainLayout><ReleaseDetailPage /></MainLayout>;
 }
 
 function JoinUsWrapper() {
@@ -160,30 +161,6 @@ function AuthWrapper() {
   return <AuthPage onBack={() => navigate('/')} />;
 }
 
-function NotFoundPage() {
-  return (
-    <MainLayout>
-      <section className="min-h-[60vh] flex flex-col items-center justify-center px-6 py-24 text-center">
-        <span className="text-xs font-mono font-bold uppercase tracking-[0.3em] text-void-accent">
-          Erreur 404
-        </span>
-        <h1 className="mt-6 text-4xl font-black uppercase tracking-tight text-white">
-          Page introuvable
-        </h1>
-        <p className="mt-4 max-w-xl text-sm text-neutral-400">
-          La page que vous cherchez n’existe pas ou a été déplacée.
-        </p>
-        <Link
-          to="/"
-          className="mt-8 inline-flex items-center rounded-full border border-white/20 px-6 py-3 text-xs font-mono font-bold uppercase tracking-widest text-white transition hover:bg-white hover:text-black"
-        >
-          Retour à l’accueil
-        </Link>
-      </section>
-    </MainLayout>
-  );
-}
-
 export function App() {
   const [showIntro, setShowIntro] = useState(shouldShowIntro);
 
@@ -191,10 +168,13 @@ export function App() {
     <ErrorBoundary>
       <AuthProvider>
         <CartProvider>
+          <PlayerProvider>
           <Router>
             <Suspense fallback={<RouteFallback />}>
               <Routes>
                 <Route path="/" element={<HomeWrapper showIntro={showIntro} setShowIntro={setShowIntro} />} />
+                <Route path="/music" element={<MusicWrapper />} />
+                <Route path="/music/:id" element={<ReleaseWrapper />} />
                 <Route path="/beats" element={<BeatsPage />} />
                 <Route path="/actu" element={<NewsPage />} />
                 <Route path="/discovery" element={<DiscoveryWrapper />} />
@@ -239,6 +219,18 @@ export function App() {
                   }
                 />
 
+                <Route
+                  path="/admin/sorties"
+                  element={
+                    <ProtectedRoute allowedRoles={['MANAGER', 'ADMIN', 'FONDATEUR']}>
+                      <ReleasesAdminWrapper />
+                    </ProtectedRoute>
+                  }
+                />
+
+                <Route path="/mentions-legales" element={<LegalWrapper />} />
+                <Route path="/confidentialite" element={<PrivacyWrapper />} />
+
                 <Route path="/checkout" element={<CheckoutWrapper />} />
                 <Route path="/auth" element={<AuthWrapper />} />
                 <Route path="/login" element={<AuthWrapper />} />
@@ -247,6 +239,7 @@ export function App() {
               </Routes>
             </Suspense>
           </Router>
+          </PlayerProvider>
         </CartProvider>
       </AuthProvider>
     </ErrorBoundary>
